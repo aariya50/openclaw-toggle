@@ -19,7 +19,7 @@ Packages/
 
 # Build artifacts
 DerivedData/
-*.app
+build/
 *.ipa
 *.dSYM.zip
 *.dSYM
@@ -30,4 +30,4 @@ DerivedData/
 *~
 .vscode/
 .idea/
-goose-build.log
+goose-*.log

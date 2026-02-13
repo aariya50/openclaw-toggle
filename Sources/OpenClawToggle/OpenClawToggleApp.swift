@@ -97,37 +97,56 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 // MARK: - Menu Bar Icon
 // ---------------------------------------------------------------------------
 
-/// Creates a composited menu bar icon: colored circle + 🎩 emoji.
+/// Creates a composited menu bar icon: alfred-icon.png resized to 18×18 with
+/// a small colored status dot badge in the bottom-right corner.
 enum MenuBarIcon {
     /// Standard menu bar icon size.
     static let size = NSSize(width: 18, height: 18)
 
+    /// Cached base icon loaded once from disk.
+    private static let baseIcon: NSImage? = {
+        // Try the app bundle first (works when running as OpenClawToggle.app)
+        let bundlePath = Bundle.main.bundlePath
+            + "/Contents/Resources/alfred-icon.png"
+        if let img = NSImage(contentsOfFile: bundlePath) {
+            return img
+        }
+        // Fallback: load from the source tree directly
+        let fallbackPath = NSString(
+            string: "~/Projects/OpenClawToggle/Resources/alfred-icon.png"
+        ).expandingTildeInPath
+        return NSImage(contentsOfFile: fallbackPath)
+    }()
+
     static func create(for state: ConnectionState) -> NSImage {
         let img = NSImage(size: size, flipped: false) { rect in
-            // Draw colored circle background
-            let bgColor: NSColor = switch state {
+            // Draw the base icon resized to 18×18
+            if let base = baseIcon {
+                base.draw(
+                    in: rect,
+                    from: NSRect(origin: .zero, size: base.size),
+                    operation: .sourceOver,
+                    fraction: 1.0
+                )
+            }
+
+            // Draw a 6px colored status dot in the bottom-right corner
+            let dotSize: CGFloat = 6
+            let dotColor: NSColor = switch state {
             case .connected:    .systemGreen
             case .tunnelOnly:   .systemYellow
             case .disconnected: .systemRed
             }
-            bgColor.setFill()
-            let circle = NSBezierPath(ovalIn: rect.insetBy(dx: 0.5, dy: 0.5))
-            circle.fill()
-
-            // Draw 🎩 emoji centered on top
-            let emoji = "🎩" as NSString
-            let fontSize: CGFloat = 12
-            let attrs: [NSAttributedString.Key: Any] = [
-                .font: NSFont.systemFont(ofSize: fontSize),
-            ]
-            let emojiSize = emoji.size(withAttributes: attrs)
-            let emojiRect = NSRect(
-                x: (rect.width - emojiSize.width) / 2,
-                y: (rect.height - emojiSize.height) / 2,
-                width: emojiSize.width,
-                height: emojiSize.height
+            dotColor.setFill()
+            let dotRect = NSRect(
+                x: rect.width - dotSize,
+                y: 0,
+                width: dotSize,
+                height: dotSize
             )
-            emoji.draw(in: emojiRect, withAttributes: attrs)
+            let dot = NSBezierPath(ovalIn: dotRect)
+            dot.fill()
+
             return true
         }
         img.isTemplate = false

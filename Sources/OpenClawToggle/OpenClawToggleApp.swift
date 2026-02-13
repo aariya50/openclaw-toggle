@@ -177,8 +177,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             object: window,
             queue: .main
         ) { [weak self] _ in
+            guard let strongSelf = self else { return }
             Task { @MainActor in
-                self?.preferencesWindow = nil
+                strongSelf.preferencesWindow = nil
                 NSApp.setActivationPolicy(.accessory)
             }
         }
@@ -221,10 +222,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             object: window,
             queue: .main
         ) { [weak self] _ in
+            guard let strongSelf = self else { return }
             Task { @MainActor in
-                self?.aboutWindow = nil
+                strongSelf.aboutWindow = nil
                 // Only revert to accessory if preferences window is also closed
-                if self?.preferencesWindow?.isVisible != true {
+                if strongSelf.preferencesWindow?.isVisible != true {
                     NSApp.setActivationPolicy(.accessory)
                 }
             }

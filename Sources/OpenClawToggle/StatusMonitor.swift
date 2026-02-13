@@ -29,6 +29,10 @@ enum ConnectionState: String {
 
 /// Polls system state every few seconds and publishes the results so SwiftUI
 /// views stay in sync automatically.
+///
+/// All configuration (port, labels, plist paths, poll interval) is read from
+/// `AppSettings.shared` so changes in the Preferences panel take effect on
+/// the next poll cycle.
 @MainActor
 final class StatusMonitor: ObservableObject {
 
@@ -49,19 +53,21 @@ final class StatusMonitor: ObservableObject {
     /// Tracks whether the launchd tunnel service is loaded (bootstrapped).
     @Published private(set) var tunnelServiceLoaded: Bool = false
 
-    // MARK: Configuration
+    // MARK: Configuration (from AppSettings)
+
+    private var settings: AppSettings { AppSettings.shared }
 
     /// Local port used by the SSH tunnel.
-    private let tunnelPort: UInt16 = 18789
+    private var tunnelPort: UInt16 { settings.tunnelPort }
 
     /// Launchd service label for the OpenClaw node.
-    private let nodeServiceLabel = "ai.openclaw.node"
+    private var nodeServiceLabel: String { settings.nodeServiceLabel }
 
     /// Launchd service label for the SSH tunnel.
-    private let tunnelServiceLabel = "ai.openclaw.ssh-tunnel"
+    private var tunnelServiceLabel: String { settings.tunnelServiceLabel }
 
     /// How often (in seconds) to refresh status.
-    private let pollInterval: TimeInterval = 3
+    private var pollInterval: TimeInterval { settings.pollInterval }
 
     /// The current user's UID (used in launchctl gui/<uid>/… paths).
     private let uid: String = {
@@ -70,14 +76,10 @@ final class StatusMonitor: ObservableObject {
     }()
 
     /// Path to the node LaunchAgent plist.
-    private var nodePlistPath: String {
-        NSHomeDirectory() + "/Library/LaunchAgents/\(nodeServiceLabel).plist"
-    }
+    private var nodePlistPath: String { settings.nodePlistPath }
 
     /// Path to the tunnel LaunchAgent plist.
-    private var tunnelPlistPath: String {
-        NSHomeDirectory() + "/Library/LaunchAgents/\(tunnelServiceLabel).plist"
-    }
+    private var tunnelPlistPath: String { settings.tunnelPlistPath }
 
     private var pollTask: Task<Void, Never>?
 
@@ -144,9 +146,9 @@ final class StatusMonitor: ObservableObject {
     // MARK: Toggle Tunnel
 
     /// Start or stop the launchd SSH tunnel service.
-    /// NOTE: This method intentionally only touches the tunnel service
-    /// (ai.openclaw.ssh-tunnel).  It must NOT bootstrap or bootout the
-    /// node service — the user controls those independently.
+    /// NOTE: This method intentionally only touches the tunnel service.
+    /// It must NOT bootstrap or bootout the node service — the user
+    /// controls those independently.
     func toggleTunnel() async {
         guard !isTunnelToggling else { return }
         isTunnelToggling = true
@@ -173,14 +175,8 @@ final class StatusMonitor: ObservableObject {
             tunnelPortListening = false
             nodeRunning  = false
             state        = .disconnected
-
-            // Do NOT call refresh() here — it would race with the
-            // services shutting down and potentially flip state back
-            // to green.  The regular poll cycle will pick up the
-            // true state within 3 seconds.
         } else {
             // Only bootstrap the tunnel plist — NOT the node.
-            // User must start the node separately.
             await runShell("/bin/launchctl", arguments: [
                 "bootstrap", "gui/\(uid)", tunnelPlistPath
             ])

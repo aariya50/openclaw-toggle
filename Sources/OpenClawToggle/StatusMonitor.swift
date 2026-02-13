@@ -61,7 +61,7 @@ final class StatusMonitor: ObservableObject {
     private let tunnelServiceLabel = "ai.openclaw.ssh-tunnel"
 
     /// How often (in seconds) to refresh status.
-    private let pollInterval: TimeInterval = 5
+    private let pollInterval: TimeInterval = 3
 
     /// The current user's UID (used in launchctl gui/<uid>/… paths).
     private let uid: String = {
@@ -144,25 +144,47 @@ final class StatusMonitor: ObservableObject {
     // MARK: Toggle Tunnel
 
     /// Start or stop the launchd SSH tunnel service.
+    /// NOTE: This method intentionally only touches the tunnel service
+    /// (ai.openclaw.ssh-tunnel).  It must NOT bootstrap or bootout the
+    /// node service — the user controls those independently.
     func toggleTunnel() async {
         guard !isTunnelToggling else { return }
         isTunnelToggling = true
         defer { isTunnelToggling = false }
 
-        if tunnelActive || tunnelServiceLoaded {
+        let wasStopping = tunnelActive || tunnelServiceLoaded
+
+        if wasStopping {
+            // Only bootout the tunnel — nothing else.
             await runShell("/bin/launchctl", arguments: [
                 "bootout", "gui/\(uid)/\(tunnelServiceLabel)"
             ])
             tunnelServiceLoaded = false
         } else {
+            // Only bootstrap the tunnel plist — nothing else.
             await runShell("/bin/launchctl", arguments: [
                 "bootstrap", "gui/\(uid)", tunnelPlistPath
             ])
             tunnelServiceLoaded = true
         }
 
+        // Immediate refresh for quick visual feedback.
         try? await Task.sleep(for: .milliseconds(800))
         await refresh()
+
+        // When stopping the tunnel, the node may take a moment to
+        // notice the tunnel is gone.  Schedule follow-up refreshes
+        // so the UI catches the node going down faster.
+        if wasStopping {
+            Task { [weak self] in
+                try? await Task.sleep(for: .seconds(2))
+                await self?.refresh()
+            }
+            Task { [weak self] in
+                try? await Task.sleep(for: .seconds(5))
+                await self?.refresh()
+            }
+        }
     }
 
     // MARK: - Private helpers

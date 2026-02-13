@@ -38,6 +38,7 @@ struct PopoverView: View {
                     isActive: monitor.nodeRunning,
                     isLoaded: monitor.serviceLoaded,
                     isToggling: monitor.isToggling,
+                    disableStart: !monitor.tunnelActive,
                     action: { Task { await monitor.toggleNode() } }
                 )
             }
@@ -98,6 +99,7 @@ struct PopoverView: View {
         isActive: Bool,
         isLoaded: Bool,
         isToggling: Bool,
+        disableStart: Bool = false,
         action: @escaping () -> Void
     ) -> some View {
         HStack(spacing: 10) {
@@ -122,6 +124,9 @@ struct PopoverView: View {
                     action()
                 }
                 .controlSize(.small)
+                // Disable the "Start" button when the prerequisite is not met
+                // (e.g. node cannot start without the tunnel).
+                .disabled(!isActive && disableStart)
             }
         }
         .padding(.horizontal, 16)

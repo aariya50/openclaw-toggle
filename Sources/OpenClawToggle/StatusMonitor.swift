@@ -155,42 +155,40 @@ final class StatusMonitor: ObservableObject {
         let wasStopping = tunnelActive || tunnelServiceLoaded
 
         if wasStopping {
-            // Only bootout the tunnel — nothing else.
+            // Bootout tunnel.
             await runShell("/bin/launchctl", arguments: [
                 "bootout", "gui/\(uid)/\(tunnelServiceLabel)"
             ])
             tunnelServiceLoaded = false
 
-            // The node cannot function without the tunnel, so reflect
-            // the stopped state in the UI immediately — don't wait for
-            // the next poll cycle.
+            // Also bootout the node — it cannot function without
+            // the tunnel, so stop it cleanly.
+            await runShell("/bin/launchctl", arguments: [
+                "bootout", "gui/\(uid)/\(nodeServiceLabel)"
+            ])
+            serviceLoaded = false
+
+            // Reflect stopped state immediately in the UI.
             tunnelActive = false
+            tunnelPortListening = false
             nodeRunning  = false
             state        = .disconnected
+
+            // Do NOT call refresh() here — it would race with the
+            // services shutting down and potentially flip state back
+            // to green.  The regular poll cycle will pick up the
+            // true state within 3 seconds.
         } else {
-            // Only bootstrap the tunnel plist — nothing else.
+            // Only bootstrap the tunnel plist — NOT the node.
+            // User must start the node separately.
             await runShell("/bin/launchctl", arguments: [
                 "bootstrap", "gui/\(uid)", tunnelPlistPath
             ])
             tunnelServiceLoaded = true
-        }
 
-        // Immediate refresh for quick visual feedback.
-        try? await Task.sleep(for: .milliseconds(800))
-        await refresh()
-
-        // When stopping the tunnel, the node may take a moment to
-        // notice the tunnel is gone.  Schedule follow-up refreshes
-        // so the UI catches the node going down faster.
-        if wasStopping {
-            Task { [weak self] in
-                try? await Task.sleep(for: .seconds(2))
-                await self?.refresh()
-            }
-            Task { [weak self] in
-                try? await Task.sleep(for: .seconds(5))
-                await self?.refresh()
-            }
+            // Wait for tunnel to establish, then refresh.
+            try? await Task.sleep(for: .seconds(2))
+            await refresh()
         }
     }
 

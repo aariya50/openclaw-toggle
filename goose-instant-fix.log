@@ -63,3 +63,33 @@ before waiting for the poll refresh. The node cannot function
 without the tunnel, so the UI should show this instantly rather
 than waiting 800ms+ for the next refresh cycle." 2>&1
 
+
+─── todo_write | todo ──────────────────────────
+content: - [x] Read StatusMonitor.swift
+- [x] In toggleTunnel(), after bootout, immediately set tunnelActive=false, nodeRunning=false, state=.disconnected
+- [x] swift build
+- [x] Copy binary to OpenClawToggle.app/Contents/MacOS/
+- [x] git commit
+
+All done. Here's a summary of the change:
+
+### What was changed
+
+In `toggleTunnel()` inside `StatusMonitor.swift`, after the `bootout` call and `tunnelServiceLoaded = false`, three lines were added:
+
+```swift
+tunnelActive = false
+nodeRunning  = false
+state        = .disconnected
+```
+
+### Why
+
+When the tunnel is stopped, the node can't function without it. Previously the UI waited ~800ms for the `refresh()` poll to update the state. Now the UI flips to `.disconnected` **immediately** after the bootout, giving the user instant feedback. The subsequent `refresh()` calls still run to reconcile with actual system state for accuracy.
+
+### Steps completed
+- ✅ Edited `Sources/OpenClawToggle/StatusMonitor.swift`
+- ✅ `swift build` — compiled cleanly
+- ✅ Binary copied to `OpenClawToggle.app/Contents/MacOS/`
+- ✅ Committed as `a851c43`
+DONE

@@ -10,13 +10,13 @@
 - [x] Fix popover positioning *(replaced NSPopover with NSMenu + NSHostingView)*
 - [x] Proper stop behavior *(bootout/bootstrap instead of kill)*
 
-## v1.0 — Public Release
-- [ ] **Preferences panel** — configurable port, service labels, plist paths
-- [ ] **Auto-detect** — scan for existing OpenClaw launchd services
-- [ ] **Proper .app bundle** — with icon, versioning, About window
+## v1.0 — Public Release (In Progress)
+- [x] **Preferences panel** — configurable port, service labels, plist paths
+- [x] **Auto-detect** — scan for existing OpenClaw launchd services
+- [x] **Proper .app bundle** — with icon, versioning, About window, build-app.sh script
 - [ ] **DMG installer** — drag-to-Applications distribution
 - [ ] **Code signing + notarization** — Apple Developer certificate
-- [ ] **README** — installation guide, screenshots, requirements
+- [x] **README** — installation guide, screenshots, requirements
 - [ ] **Homebrew cask** — `brew install --cask openclaw-toggle`
 - [ ] **Launch at login** — optional auto-start on login
 - [ ] **Menu bar icon options** — choice of icon style

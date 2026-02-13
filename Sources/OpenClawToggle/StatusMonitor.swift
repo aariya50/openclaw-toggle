@@ -40,11 +40,14 @@ final class StatusMonitor: ObservableObject {
     @Published private(set) var isToggling: Bool = false
     @Published private(set) var isTunnelToggling: Bool = false
 
+    /// Whether the tunnel port is actively listening (lsof check).
+    @Published private(set) var tunnelPortListening: Bool = false
+
     /// Tracks whether the launchd node service is loaded (bootstrapped).
-    @Published private(set) var serviceLoaded: Bool = true
+    @Published private(set) var serviceLoaded: Bool = false
 
     /// Tracks whether the launchd tunnel service is loaded (bootstrapped).
-    @Published private(set) var tunnelServiceLoaded: Bool = true
+    @Published private(set) var tunnelServiceLoaded: Bool = false
 
     // MARK: Configuration
 
@@ -164,27 +167,41 @@ final class StatusMonitor: ObservableObject {
 
     // MARK: - Private helpers
 
-    /// Returns `true` when something is listening on `tunnelPort`.
+    /// Returns `true` when the tunnel service process is running (has a
+    /// running state or valid PID in launchd).  Also updates
+    /// `tunnelServiceLoaded` and `tunnelPortListening` as side-effects.
     private func checkTunnel() async -> Bool {
-        let output = await runShell(
+        // 1. Port check – is something actually listening on the tunnel port?
+        let lsofOutput = await runShell(
             "/usr/sbin/lsof",
             arguments: ["-iTCP:\(tunnelPort)", "-sTCP:LISTEN", "-P", "-n"]
         )
-        let active = !output.isEmpty
+        tunnelPortListening = !lsofOutput.isEmpty
 
-        // Also check if the tunnel service is loaded in launchd.
+        // 2. Service check – is the launchd service loaded & running?
         let svcOutput = await runShell(
             "/bin/launchctl",
             arguments: ["print", "gui/\(uid)/\(tunnelServiceLabel)"]
         )
-        let svcLines = svcOutput.lowercased()
-        if svcLines.contains("could not find service") || svcOutput.isEmpty {
+        let lines = svcOutput.lowercased()
+
+        if lines.contains("could not find service") || svcOutput.isEmpty {
             tunnelServiceLoaded = false
-        } else {
-            tunnelServiceLoaded = true
+            return false
         }
 
-        return active
+        tunnelServiceLoaded = true
+
+        // Check for running state
+        if lines.contains("state = running") { return true }
+
+        // Check for a valid PID
+        if let range = lines.range(of: "pid = ") {
+            let after = lines[range.upperBound...]
+            let digits = after.prefix(while: { $0.isNumber })
+            if let pid = Int(digits), pid > 0 { return true }
+        }
+        return false
     }
 
     /// Returns `true` when the launchd service has a running PID.

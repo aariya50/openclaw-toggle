@@ -101,7 +101,7 @@ struct PopoverView: View {
         action: @escaping () -> Void
     ) -> some View {
         HStack(spacing: 10) {
-            // Status dot
+            // Status dot — reflects whether the service process is running
             Circle()
                 .fill(isActive ? Color.green : Color.red.opacity(0.7))
                 .frame(width: 7, height: 7)
@@ -118,10 +118,10 @@ struct PopoverView: View {
                     .controlSize(.small)
                     .frame(width: 52, height: 22)
             } else {
-                Button(isActive || isLoaded ? "Stop" : "Start") {
+                Button(isActive ? "Stop" : "Start") {
                     action()
                 }
-                .buttonStyle(ServiceButtonStyle(isActive: isActive || isLoaded))
+                .controlSize(.small)
             }
         }
         .padding(.horizontal, 16)
@@ -209,33 +209,4 @@ private struct AlfredAvatarImage: View {
     }
 }
 
-// ---------------------------------------------------------------------------
-// MARK: - Service Button Style
-// ---------------------------------------------------------------------------
-
-/// A clean, minimal button style for start/stop service controls.
-private struct ServiceButtonStyle: ButtonStyle {
-    let isActive: Bool
-
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .font(.caption.weight(.medium))
-            .foregroundStyle(isActive ? .red : .green)
-            .padding(.horizontal, 12)
-            .padding(.vertical, 4)
-            .background(
-                RoundedRectangle(cornerRadius: 6)
-                    .fill(isActive
-                        ? Color.red.opacity(0.1)
-                        : Color.green.opacity(0.1))
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: 6)
-                    .stroke(isActive
-                        ? Color.red.opacity(0.25)
-                        : Color.green.opacity(0.25),
-                        lineWidth: 0.5)
-            )
-            .opacity(configuration.isPressed ? 0.7 : 1.0)
-    }
-}
+// (ServiceButtonStyle removed – using standard macOS button style)

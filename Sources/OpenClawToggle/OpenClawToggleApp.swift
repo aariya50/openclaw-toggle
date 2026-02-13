@@ -73,7 +73,37 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         monitor.startPolling()
     }
 
+    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        // Stop polling immediately so no new refresh cycles interfere.
+        monitor.stopPolling()
+
+        // Bootout both launchd services before the app exits.
+        // We return .terminateLater and call reply(.terminateNow) once
+        // the bootout commands have finished.
+        let uid = String(getuid())
+        let labels = ["ai.openclaw.ssh-tunnel", "ai.openclaw.node"]
+
+        Task.detached(priority: .userInitiated) {
+            for label in labels {
+                let process = Process()
+                process.executableURL = URL(fileURLWithPath: "/bin/launchctl")
+                process.arguments = ["bootout", "gui/\(uid)/\(label)"]
+                process.standardOutput = FileHandle.nullDevice
+                process.standardError = FileHandle.nullDevice
+                try? process.run()
+                process.waitUntilExit()
+            }
+            await MainActor.run {
+                NSApplication.shared.reply(toApplicationShouldTerminate: true)
+            }
+        }
+
+        return .terminateLater
+    }
+
     func applicationWillTerminate(_ notification: Notification) {
+        // Polling already stopped in applicationShouldTerminate, but
+        // guard against direct termination paths just in case.
         monitor.stopPolling()
     }
 

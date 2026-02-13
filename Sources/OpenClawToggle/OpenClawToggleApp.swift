@@ -22,6 +22,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private let monitor = StatusMonitor()
     private let settings = AppSettings.shared
     private var cancellables = Set<AnyCancellable>()
+    private lazy var lifecycle = ServiceLifecycleManager(settings: settings)
 
     /// The menu shown when the status item is clicked.
     private let menu = NSMenu()
@@ -97,33 +98,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
         // ── Start polling ─────────────────────────────────────────────
         monitor.startPolling()
+
+        // ── Bootstrap services & install crash watchdog ───────────────
+        lifecycle.start()
     }
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
         // Stop polling immediately so no new refresh cycles interfere.
         monitor.stopPolling()
 
-        // Bootout both launchd services before the app exits.
-        // We return .terminateLater and call reply(.terminateNow) once
-        // the bootout commands have finished.
-        let uid = String(getuid())
-        let tunnelLabel = settings.tunnelServiceLabel
-        let nodeLabel   = settings.nodeServiceLabel
-        let labels = [tunnelLabel, nodeLabel]
-
-        Task.detached(priority: .userInitiated) {
-            for label in labels {
-                let process = Process()
-                process.executableURL = URL(fileURLWithPath: "/bin/launchctl")
-                process.arguments = ["bootout", "gui/\(uid)/\(label)"]
-                process.standardOutput = FileHandle.nullDevice
-                process.standardError = FileHandle.nullDevice
-                try? process.run()
-                process.waitUntilExit()
-            }
-            await MainActor.run {
-                NSApplication.shared.reply(toApplicationShouldTerminate: true)
-            }
+        // Delegate all teardown (bootout services, remove PID file,
+        // unload watchdog) to the lifecycle manager.
+        lifecycle.teardown {
+            NSApplication.shared.reply(toApplicationShouldTerminate: true)
         }
 
         return .terminateLater

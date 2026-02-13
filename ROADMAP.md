@@ -1,14 +1,14 @@
 # OpenClaw Toggle — Roadmap
 
-## v0.1 — MVP (Current)
+## v0.1 — MVP ✅ Complete
 - [x] Menu bar icon with connection status (green/yellow/red)
 - [x] Popover with tunnel + node status
 - [x] Start/Stop node toggle
 - [x] 5-second polling
 - [x] Swift Package Manager build
-- [ ] Custom Alfred icon with colored glow
-- [ ] Fix popover positioning (gap below icon)
-- [ ] Proper stop behavior (bootout/bootstrap instead of kill)
+- [x] Custom Alfred icon with colored glow *(Instagram Close Friends–style ring)*
+- [x] Fix popover positioning *(replaced NSPopover with NSMenu + NSHostingView)*
+- [x] Proper stop behavior *(bootout/bootstrap instead of kill)*
 
 ## v1.0 — Public Release
 - [ ] **Preferences panel** — configurable port, service labels, plist paths

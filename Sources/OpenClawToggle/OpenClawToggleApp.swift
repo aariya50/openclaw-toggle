@@ -27,6 +27,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     /// Sparkle auto-updater manager — created once, lives for the app.
     private lazy var updater = SparkleUpdaterManager()
 
+    /// Connection drop notifier — posts macOS notifications on state changes.
+    private lazy var notifier = ConnectionNotifier()
+
     /// The menu shown when the status item is clicked.
     private let menu = NSMenu()
 
@@ -41,6 +44,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     /// Setup Wizard window (created on demand).
     private var wizardWindow: NSWindow?
+
+    /// Logs window (created on demand).
+    private var logsWindow: NSWindow?
 
     // MARK: NSApplicationDelegate
 
@@ -85,6 +91,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             },
             onOpenAbout: { [weak self] in
                 self?.scheduleOpenAbout()
+            },
+            onOpenLogs: { [weak self] in
+                self?.scheduleOpenLogs()
             }
         )
         let hostingView = NSHostingView(rootView: contentView)
@@ -110,6 +119,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         // ── Start polling ─────────────────────────────────────────────
         monitor.startPolling()
 
+        // ── Connection drop notifications ─────────────────────────────
+        notifier.start(monitor: monitor)
+
         // ── Bootstrap services & install crash watchdog ───────────────
         lifecycle.start()
     }
@@ -117,6 +129,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
         // Stop polling immediately so no new refresh cycles interfere.
         monitor.stopPolling()
+        notifier.stop()
 
         // Delegate all teardown (bootout services, remove PID file,
         // unload watchdog) to the lifecycle manager.
@@ -131,6 +144,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         // Polling already stopped in applicationShouldTerminate, but
         // guard against direct termination paths just in case.
         monitor.stopPolling()
+        notifier.stop()
     }
 
     // MARK: Main Menu (Cmd+W support)
@@ -192,6 +206,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         menu.cancelTracking()
         DispatchQueue.main.async { [weak self] in
             self?.openAbout()
+        }
+    }
+
+    /// Schedule opening Logs after the menu finishes closing.
+    private func scheduleOpenLogs() {
+        menu.cancelTracking()
+        DispatchQueue.main.async { [weak self] in
+            self?.openLogs()
         }
     }
 
@@ -288,6 +310,47 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private func updateIcon(for state: ConnectionState) {
         statusItem.button?.image = MenuBarIcon.create(for: state)
         statusItem.button?.image?.isTemplate = false
+    }
+
+    // MARK: Logs Window
+
+    func openLogs() {
+        if let existing = logsWindow, existing.isVisible {
+            existing.makeKeyAndOrderFront(nil)
+            NSApp.activate(ignoringOtherApps: true)
+            return
+        }
+
+        let logsView = LogsViewer()
+        let hostingController = NSHostingController(rootView: logsView)
+        let window = NSWindow(contentViewController: hostingController)
+        window.title = "OpenClaw Toggle — Logs"
+        window.styleMask = [.titled, .closable, .resizable]
+        window.setContentSize(NSSize(width: 520, height: 360))
+        window.center()
+        window.isReleasedWhenClosed = false
+        window.makeKeyAndOrderFront(nil)
+
+        NSApp.setActivationPolicy(.regular)
+        NSApp.activate(ignoringOtherApps: true)
+
+        logsWindow = window
+
+        NotificationCenter.default.addObserver(
+            forName: NSWindow.willCloseNotification,
+            object: window,
+            queue: .main
+        ) { [weak self] _ in
+            guard let strongSelf = self else { return }
+            Task { @MainActor in
+                strongSelf.logsWindow = nil
+                if strongSelf.preferencesWindow?.isVisible != true
+                    && strongSelf.aboutWindow?.isVisible != true
+                    && strongSelf.wizardWindow?.isVisible != true {
+                    NSApp.setActivationPolicy(.accessory)
+                }
+            }
+        }
     }
 
     // MARK: About Window

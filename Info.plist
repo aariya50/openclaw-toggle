@@ -9,9 +9,9 @@
     <key>CFBundleIdentifier</key>
     <string>ai.openclaw.toggle</string>
     <key>CFBundleVersion</key>
-    <string>3</string>
+    <string>4</string>
     <key>CFBundleShortVersionString</key>
-    <string>2.0.2</string>
+    <string>3.0.0</string>
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>CFBundleExecutable</key>
@@ -32,5 +32,7 @@
     <string>https://github.com/aariya50/openclaw-toggle/releases/latest/download/appcast.xml</string>
     <key>SUPublicEDKey</key>
     <string></string>
+    <key>SUAutomaticallyUpdate</key>
+    <true/>
 </dict>
 </plist>

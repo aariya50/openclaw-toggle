@@ -15,6 +15,12 @@ struct PopoverView: View {
     /// Callback to open the About window.
     var onOpenAbout: (() -> Void)?
 
+    /// Callback to open the Logs window.
+    var onOpenLogs: (() -> Void)?
+
+    /// Whether a manual refresh is in progress.
+    @State private var isRefreshing = false
+
     var body: some View {
         VStack(spacing: 0) {
 
@@ -34,7 +40,8 @@ struct PopoverView: View {
                     isActive: monitor.tunnelActive,
                     isLoaded: monitor.tunnelServiceLoaded,
                     isToggling: monitor.isTunnelToggling,
-                    action: { Task { await monitor.toggleTunnel() } }
+                    onToggle: { Task { await monitor.toggleTunnel() } },
+                    onRestart: { Task { await monitor.restartTunnel() } }
                 )
 
                 Divider()
@@ -46,7 +53,8 @@ struct PopoverView: View {
                     isLoaded: monitor.serviceLoaded,
                     isToggling: monitor.isToggling,
                     disableStart: !monitor.tunnelActive,
-                    action: { Task { await monitor.toggleNode() } }
+                    onToggle: { Task { await monitor.toggleNode() } },
+                    onRestart: { Task { await monitor.restartNode() } }
                 )
             }
             .padding(.vertical, 4)
@@ -54,8 +62,8 @@ struct PopoverView: View {
             Divider()
                 .padding(.horizontal, 12)
 
-            // ── Footer: Preferences, About, Updates & Quit ────────
-            HStack(spacing: 12) {
+            // ── Footer: Preferences, About, Logs, Refresh & Quit ──
+            HStack(spacing: 10) {
                 Button {
                     onOpenPreferences?()
                 } label: {
@@ -80,15 +88,37 @@ struct PopoverView: View {
                 .help("About OpenClaw Toggle")
 
                 Button {
-                    updater.checkForUpdates()
+                    onOpenLogs?()
                 } label: {
-                    Image(systemName: "arrow.triangle.2.circlepath")
+                    Image(systemName: "doc.text")
                 }
                 .buttonStyle(.plain)
                 .font(.caption)
                 .foregroundStyle(.secondary)
-                .disabled(!updater.canCheckForUpdates)
-                .help("Check for Updates")
+                .help("View Logs")
+
+                Button {
+                    Task {
+                        isRefreshing = true
+                        await monitor.refresh()
+                        // Brief delay so the spinner is visible even on fast refreshes
+                        try? await Task.sleep(for: .milliseconds(400))
+                        isRefreshing = false
+                    }
+                } label: {
+                    if isRefreshing {
+                        ProgressView()
+                            .controlSize(.small)
+                            .frame(width: 12, height: 12)
+                    } else {
+                        Image(systemName: "arrow.clockwise")
+                    }
+                }
+                .buttonStyle(.plain)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .disabled(isRefreshing)
+                .help("Refresh Status")
 
                 Spacer()
 
@@ -102,7 +132,7 @@ struct PopoverView: View {
             }
             .padding(.vertical, 10)
         }
-        .frame(width: 280)
+        .frame(width: 300)
     }
 
     // MARK: - Header
@@ -139,7 +169,8 @@ struct PopoverView: View {
         isLoaded: Bool,
         isToggling: Bool,
         disableStart: Bool = false,
-        action: @escaping () -> Void
+        onToggle: @escaping () -> Void,
+        onRestart: @escaping () -> Void
     ) -> some View {
         HStack(spacing: 10) {
             // Status dot — reflects whether the service process is running
@@ -153,19 +184,33 @@ struct PopoverView: View {
 
             Spacer()
 
-            // Toggle button
+            // Toggle + Restart buttons
             if isToggling {
                 ProgressView()
                     .controlSize(.small)
-                    .frame(width: 52, height: 22)
+                    .frame(width: 80, height: 22)
             } else {
-                Button(isActive ? "Stop" : "Start") {
-                    action()
+                HStack(spacing: 6) {
+                    // Restart button (only shown when service is active)
+                    if isActive {
+                        Button {
+                            onRestart()
+                        } label: {
+                            Image(systemName: "arrow.counterclockwise")
+                                .font(.caption2)
+                        }
+                        .controlSize(.small)
+                        .help("Restart")
+                    }
+
+                    Button(isActive ? "Stop" : "Start") {
+                        onToggle()
+                    }
+                    .controlSize(.small)
+                    // Disable the "Start" button when the prerequisite is not met
+                    // (e.g. node cannot start without the tunnel).
+                    .disabled(!isActive && disableStart)
                 }
-                .controlSize(.small)
-                // Disable the "Start" button when the prerequisite is not met
-                // (e.g. node cannot start without the tunnel).
-                .disabled(!isActive && disableStart)
             }
         }
         .padding(.horizontal, 16)

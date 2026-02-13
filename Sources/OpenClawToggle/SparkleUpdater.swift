@@ -39,6 +39,12 @@ final class SparkleUpdaterManager: ObservableObject {
             userDriverDelegate: nil
         )
 
+        // Enable automatic downloading and installing of updates.
+        // Combined with SUAutomaticallyUpdate=YES in Info.plist,
+        // Sparkle will quit → replace → relaunch automatically.
+        controller.updater.automaticallyChecksForUpdates = true
+        controller.updater.automaticallyDownloadsUpdates = true
+
         // Observe the updater's `canCheckForUpdates` property via KVO
         // and bridge it to our @Published property.
         controller.updater.publisher(for: \.canCheckForUpdates)

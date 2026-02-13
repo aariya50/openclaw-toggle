@@ -143,6 +143,52 @@ final class StatusMonitor: ObservableObject {
         await refresh()
     }
 
+    // MARK: Quick Restart
+
+    /// Stop then immediately re-start the tunnel service.
+    func restartTunnel() async {
+        guard !isTunnelToggling else { return }
+        isTunnelToggling = true
+        defer { isTunnelToggling = false }
+
+        // Bootout
+        await runShell("/bin/launchctl", arguments: [
+            "bootout", "gui/\(uid)/\(tunnelServiceLabel)"
+        ])
+        tunnelServiceLoaded = false
+        try? await Task.sleep(for: .seconds(1))
+
+        // Bootstrap
+        await runShell("/bin/launchctl", arguments: [
+            "bootstrap", "gui/\(uid)", tunnelPlistPath
+        ])
+        tunnelServiceLoaded = true
+        try? await Task.sleep(for: .seconds(2))
+        await refresh()
+    }
+
+    /// Stop then immediately re-start the node service.
+    func restartNode() async {
+        guard !isToggling else { return }
+        isToggling = true
+        defer { isToggling = false }
+
+        // Bootout
+        await runShell("/bin/launchctl", arguments: [
+            "bootout", "gui/\(uid)/\(nodeServiceLabel)"
+        ])
+        serviceLoaded = false
+        try? await Task.sleep(for: .milliseconds(800))
+
+        // Bootstrap
+        await runShell("/bin/launchctl", arguments: [
+            "bootstrap", "gui/\(uid)", nodePlistPath
+        ])
+        serviceLoaded = true
+        try? await Task.sleep(for: .milliseconds(800))
+        await refresh()
+    }
+
     // MARK: Toggle Tunnel
 
     /// Start or stop the launchd SSH tunnel service.

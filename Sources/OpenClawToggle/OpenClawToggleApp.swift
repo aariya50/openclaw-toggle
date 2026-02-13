@@ -12,16 +12,21 @@ import SwiftUI
 // MARK: - App Delegate
 // ---------------------------------------------------------------------------
 
-/// Owns the `NSStatusItem` and the popover.  Using an AppDelegate gives us
-/// full control over the menu bar icon lifecycle and avoids the pitfalls of
-/// MenuBarExtra (which has limited customisation on macOS 14).
+/// Owns the `NSStatusItem` and the menu.  Uses NSMenu with a custom
+/// NSMenuItem containing an NSHostingView instead of NSPopover, which
+/// eliminates the common gap-below-menu-bar-icon issue on macOS.
 @MainActor
-final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
+final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     private var statusItem: NSStatusItem!
-    private let popover = NSPopover()
     private let monitor = StatusMonitor()
     private var cancellables = Set<AnyCancellable>()
+
+    /// The menu shown when the status item is clicked.
+    private let menu = NSMenu()
+
+    /// The hosting view inside the custom menu item.
+    private var hostingView: NSHostingView<PopoverView>?
 
     // MARK: NSApplicationDelegate
 
@@ -29,27 +34,32 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         // Hide dock icon programmatically as a safety net
         // (Info.plist LSUIElement is the primary mechanism when bundled).
         NSApp.setActivationPolicy(.accessory)
+        // Prevent macOS from automatically terminating this menu bar app
+        ProcessInfo.processInfo.disableAutomaticTermination("Menu bar app must stay alive")
+        ProcessInfo.processInfo.disableSuddenTermination()
 
         // ── Status bar item ───────────────────────────────────────────
         statusItem = NSStatusBar.system.statusItem(
             withLength: NSStatusItem.variableLength
         )
         if let button = statusItem.button {
-            button.image = NSImage(
-                systemSymbolName: "circle.fill",
-                accessibilityDescription: "OpenClaw status"
-            )
-            // Start with red (disconnected) tint.
-            button.contentTintColor = .systemRed
-            button.action = #selector(togglePopover(_:))
-            button.target = self
+            button.image = MenuBarIcon.create(for: .disconnected)
+            button.image?.isTemplate = false
         }
 
-        // ── Popover ───────────────────────────────────────────────────
+        // ── Menu with custom view ─────────────────────────────────────
         let contentView = PopoverView(monitor: monitor)
-        popover.contentViewController = NSHostingController(rootView: contentView)
-        popover.behavior = .transient
-        popover.delegate = self
+        let hostingView = NSHostingView(rootView: contentView)
+        // Let the hosting view determine its ideal size.
+        hostingView.setFrameSize(hostingView.fittingSize)
+        self.hostingView = hostingView
+
+        let menuItem = NSMenuItem()
+        menuItem.view = hostingView
+        menu.addItem(menuItem)
+        menu.delegate = self
+
+        statusItem.menu = menu
 
         // ── React to state changes ────────────────────────────────────
         monitor.$state
@@ -67,27 +77,61 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         monitor.stopPolling()
     }
 
-    // MARK: Icon tint
+    // MARK: NSMenuDelegate
 
-    private func updateIcon(for state: ConnectionState) {
-        let color: NSColor = switch state {
-        case .connected:    .systemGreen
-        case .tunnelOnly:   .systemYellow
-        case .disconnected: .systemRed
-        }
-        statusItem.button?.contentTintColor = color
+    func menuWillOpen(_ menu: NSMenu) {
+        // Resize the hosting view each time the menu opens to pick up
+        // any content size changes from SwiftUI.
+        hostingView?.setFrameSize(hostingView?.fittingSize ?? .zero)
     }
 
-    // MARK: Popover toggle
+    // MARK: Icon update
 
-    @objc private func togglePopover(_ sender: Any?) {
-        if popover.isShown {
-            popover.performClose(sender)
-        } else if let button = statusItem.button {
-            popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
-            // Bring our popover window to front.
-            popover.contentViewController?.view.window?.makeKey()
+    private func updateIcon(for state: ConnectionState) {
+        statusItem.button?.image = MenuBarIcon.create(for: state)
+        statusItem.button?.image?.isTemplate = false
+    }
+}
+
+// ---------------------------------------------------------------------------
+// MARK: - Menu Bar Icon
+// ---------------------------------------------------------------------------
+
+/// Creates a composited menu bar icon: colored circle + 🎩 emoji.
+enum MenuBarIcon {
+    /// Standard menu bar icon size.
+    static let size = NSSize(width: 18, height: 18)
+
+    static func create(for state: ConnectionState) -> NSImage {
+        let img = NSImage(size: size, flipped: false) { rect in
+            // Draw colored circle background
+            let bgColor: NSColor = switch state {
+            case .connected:    .systemGreen
+            case .tunnelOnly:   .systemYellow
+            case .disconnected: .systemRed
+            }
+            bgColor.setFill()
+            let circle = NSBezierPath(ovalIn: rect.insetBy(dx: 0.5, dy: 0.5))
+            circle.fill()
+
+            // Draw 🎩 emoji centered on top
+            let emoji = "🎩" as NSString
+            let fontSize: CGFloat = 12
+            let attrs: [NSAttributedString.Key: Any] = [
+                .font: NSFont.systemFont(ofSize: fontSize),
+            ]
+            let emojiSize = emoji.size(withAttributes: attrs)
+            let emojiRect = NSRect(
+                x: (rect.width - emojiSize.width) / 2,
+                y: (rect.height - emojiSize.height) / 2,
+                width: emojiSize.width,
+                height: emojiSize.height
+            )
+            emoji.draw(in: emojiRect, withAttributes: attrs)
+            return true
         }
+        img.isTemplate = false
+        return img
     }
 }
 

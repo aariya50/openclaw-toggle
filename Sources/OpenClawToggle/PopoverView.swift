@@ -12,9 +12,9 @@ struct PopoverView: View {
 
             // ── Header ────────────────────────────────────────────────
             HStack(spacing: 8) {
-                Image(systemName: "circle.fill")
-                    .foregroundStyle(monitor.state.color)
-                    .font(.system(size: 12))
+                Circle()
+                    .fill(monitor.state.color)
+                    .frame(width: 12, height: 12)
 
                 Text(monitor.state.rawValue)
                     .font(.headline)
@@ -37,7 +37,9 @@ struct PopoverView: View {
 
             // ── Actions ───────────────────────────────────────────────
             Button {
-                Task { await monitor.toggleNode() }
+                Task {
+                    await monitor.toggleNode()
+                }
             } label: {
                 HStack {
                     Spacer()
@@ -46,7 +48,9 @@ struct PopoverView: View {
                             .controlSize(.small)
                             .padding(.trailing, 4)
                     }
-                    Text(monitor.nodeRunning ? "Stop Node" : "Start Node")
+                    // Show "Stop Node" when service is loaded/running,
+                    // "Start Node" when service has been booted out.
+                    Text(buttonLabel)
                         .frame(maxWidth: .infinity)
                     Spacer()
                 }
@@ -63,6 +67,16 @@ struct PopoverView: View {
         .padding()
         .frame(width: 260)
     }
+
+    /// Determines the toggle button label based on whether the service
+    /// is loaded in launchd (not just whether the process is running).
+    private var buttonLabel: String {
+        if monitor.nodeRunning || monitor.serviceLoaded {
+            return "Stop Node"
+        } else {
+            return "Start Node"
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -76,9 +90,9 @@ private struct StatusRow: View {
 
     var body: some View {
         HStack(spacing: 8) {
-            Image(systemName: "circle.fill")
-                .foregroundStyle(active ? .green : .red)
-                .font(.system(size: 8))
+            Circle()
+                .fill(active ? .green : .red)
+                .frame(width: 8, height: 8)
 
             Text(label)
                 .font(.subheadline)

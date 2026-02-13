@@ -39,6 +39,10 @@ final class StatusMonitor: ObservableObject {
     @Published private(set) var state: ConnectionState = .disconnected
     @Published private(set) var isToggling: Bool = false
 
+    /// Tracks whether the launchd service is loaded (bootstrapped).
+    /// When `false`, the service has been booted out and won't auto-restart.
+    @Published private(set) var serviceLoaded: Bool = true
+
     // MARK: Configuration
 
     /// Local port used by the SSH tunnel.
@@ -55,6 +59,11 @@ final class StatusMonitor: ObservableObject {
         ProcessInfo.processInfo.environment["SUDO_UID"]
             ?? String(getuid())
     }()
+
+    /// Path to the LaunchAgent plist.
+    private var plistPath: String {
+        NSHomeDirectory() + "/Library/LaunchAgents/\(serviceLabel).plist"
+    }
 
     private var pollTask: Task<Void, Never>?
 
@@ -97,23 +106,33 @@ final class StatusMonitor: ObservableObject {
     // MARK: Toggle
 
     /// Start or stop the launchd node service.
+    ///
+    /// To **stop**: `launchctl bootout gui/<uid>/<label>` which unloads
+    /// the service entirely so KeepAlive cannot restart it.
+    ///
+    /// To **start**: `launchctl bootstrap gui/<uid> <plist>` which
+    /// re-loads the service and starts it due to RunAtLoad.
     func toggleNode() async {
         guard !isToggling else { return }
         isToggling = true
         defer { isToggling = false }
 
-        if nodeRunning {
+        if nodeRunning || serviceLoaded {
+            // Bootout unloads the service so KeepAlive won't restart it.
             await runShell("/bin/launchctl", arguments: [
-                "kill", "SIGTERM", "gui/\(uid)/\(serviceLabel)"
+                "bootout", "gui/\(uid)/\(serviceLabel)"
             ])
+            serviceLoaded = false
         } else {
+            // Bootstrap re-loads the plist; RunAtLoad will start the process.
             await runShell("/bin/launchctl", arguments: [
-                "kickstart", "-k", "gui/\(uid)/\(serviceLabel)"
+                "bootstrap", "gui/\(uid)", plistPath
             ])
+            serviceLoaded = true
         }
 
         // Brief pause so launchd has time to act, then refresh.
-        try? await Task.sleep(for: .milliseconds(500))
+        try? await Task.sleep(for: .milliseconds(800))
         await refresh()
     }
 
@@ -129,19 +148,26 @@ final class StatusMonitor: ObservableObject {
     }
 
     /// Returns `true` when the launchd service has a running PID.
+    /// Also updates `serviceLoaded` based on whether the service exists.
     private func checkNode() async -> Bool {
         let output = await runShell(
             "/bin/launchctl", arguments: ["print", "gui/\(uid)/\(serviceLabel)"]
         )
-        // `launchctl print` includes "state = running" when active
-        // and "pid = <number>" when the process is alive.
-        // A non-empty output that contains "pid =" with a numeric value
-        // is a reliable indicator.
+
         let lines = output.lowercased()
+
+        // If launchctl can't find the service, it's been booted out.
+        if lines.contains("could not find service") || output.isEmpty {
+            serviceLoaded = false
+            return false
+        }
+
+        // Service is loaded in launchd.
+        serviceLoaded = true
+
         if lines.contains("state = running") { return true }
-        // Fallback: check the legacy `launchctl list` approach.
-        if lines.contains("could not find service") { return false }
-        // If `print` worked but state isn't "running", check pid line.
+
+        // Check pid line as fallback.
         if let range = lines.range(of: "pid = ") {
             let after = lines[range.upperBound...]
             let digits = after.prefix(while: { $0.isNumber })

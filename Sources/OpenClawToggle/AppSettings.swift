@@ -2,6 +2,7 @@
 // OpenClaw Toggle — persistent user settings backed by UserDefaults.
 
 import Foundation
+import ServiceManagement
 
 /// Central store for all user-configurable settings.
 ///
@@ -23,6 +24,8 @@ final class AppSettings: ObservableObject {
         case tunnelPlistPath     = "tunnelPlistPath"
         case pollInterval        = "pollInterval"
         case hasCompletedSetup   = "hasCompletedSetup"
+        case gatewayHost         = "gatewayHost"
+        case launchAtLogin       = "launchAtLogin"
     }
 
     // MARK: - Defaults
@@ -31,6 +34,7 @@ final class AppSettings: ObservableObject {
     private static let defaultNodeLabel: String         = "ai.openclaw.node"
     private static let defaultTunnelLabel: String       = "ai.openclaw.ssh-tunnel"
     private static let defaultPollInterval: TimeInterval = 3
+    private static let defaultGatewayHost: String       = ""
 
     private static var defaultNodePlistPath: String {
         NSHomeDirectory() + "/Library/LaunchAgents/\(defaultNodeLabel).plist"
@@ -76,6 +80,19 @@ final class AppSettings: ObservableObject {
         didSet { save(.hasCompletedSetup, value: hasCompletedSetup) }
     }
 
+    /// SSH gateway host (e.g. "gateway.openclaw.ai" or user@host).
+    @Published var gatewayHost: String {
+        didSet { save(.gatewayHost, value: gatewayHost) }
+    }
+
+    /// Whether the app should launch at login.
+    @Published var launchAtLogin: Bool {
+        didSet {
+            save(.launchAtLogin, value: launchAtLogin)
+            applyLaunchAtLogin()
+        }
+    }
+
     // MARK: - Init
 
     private init() {
@@ -100,6 +117,11 @@ final class AppSettings: ObservableObject {
         self.pollInterval = poll > 0 ? poll : Self.defaultPollInterval
 
         self.hasCompletedSetup = d.bool(forKey: Key.hasCompletedSetup.rawValue)
+
+        self.gatewayHost = d.string(forKey: Key.gatewayHost.rawValue)
+            ?? Self.defaultGatewayHost
+
+        self.launchAtLogin = d.bool(forKey: Key.launchAtLogin.rawValue)
     }
 
     // MARK: - Reset
@@ -112,6 +134,30 @@ final class AppSettings: ObservableObject {
         nodePlistPath       = Self.defaultNodePlistPath
         tunnelPlistPath     = Self.defaultTunnelPlistPath
         pollInterval        = Self.defaultPollInterval
+        gatewayHost         = Self.defaultGatewayHost
+    }
+
+    // MARK: - Launch at Login
+
+    /// Applies the current `launchAtLogin` preference using SMAppService.
+    /// Available on macOS 13+ (Ventura). Since we target macOS 14+ this is safe.
+    private func applyLaunchAtLogin() {
+        let service = SMAppService.mainApp
+        do {
+            if launchAtLogin {
+                try service.register()
+            } else {
+                try service.unregister()
+            }
+        } catch {
+            // If registration fails (e.g. sandboxing issues), log and revert.
+            print("[OpenClawToggle] Launch at Login error: \(error.localizedDescription)")
+        }
+    }
+
+    /// Reads the actual system state of launch-at-login for this app.
+    var isRegisteredForLaunchAtLogin: Bool {
+        SMAppService.mainApp.status == .enabled
     }
 
     // MARK: - Private

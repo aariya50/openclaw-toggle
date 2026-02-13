@@ -24,6 +24,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var cancellables = Set<AnyCancellable>()
     private lazy var lifecycle = ServiceLifecycleManager(settings: settings)
 
+    /// Sparkle auto-updater manager — created once, lives for the app.
+    private lazy var updater = SparkleUpdaterManager()
+
     /// The menu shown when the status item is clicked.
     private let menu = NSMenu()
 
@@ -36,6 +39,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     /// About window (created on demand).
     private var aboutWindow: NSWindow?
 
+    /// Setup Wizard window (created on demand).
+    private var wizardWindow: NSWindow?
+
     // MARK: NSApplicationDelegate
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -46,13 +52,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         ProcessInfo.processInfo.disableAutomaticTermination("Menu bar app must stay alive")
         ProcessInfo.processInfo.disableSuddenTermination()
 
-        // ── First-run: auto-detect services ───────────────────────────
+        // ── First-run: show Setup Wizard ──────────────────────────────
         if !settings.hasCompletedSetup {
+            // Try auto-detect first
             let count = ServiceDetector.detectAndApply(to: settings)
             if count == 0 {
-                // No services found — show Preferences so user can configure.
-                DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { [weak self] in
-                    self?.openPreferences()
+                // No services found — show the Setup Wizard.
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
+                    self?.openSetupWizard()
                 }
             }
         }
@@ -69,6 +76,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         // ── Menu with custom view ─────────────────────────────────────
         let contentView = PopoverView(
             monitor: monitor,
+            updater: updater,
             onOpenPreferences: { [weak self] in
                 self?.openPreferences()
             },
@@ -130,6 +138,52 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         hostingView?.setFrameSize(hostingView?.fittingSize ?? .zero)
     }
 
+    // MARK: Setup Wizard
+
+    func openSetupWizard() {
+        // Close the menu if it's open.
+        menu.cancelTracking()
+
+        if let existing = wizardWindow, existing.isVisible {
+            existing.makeKeyAndOrderFront(nil)
+            NSApp.activate(ignoringOtherApps: true)
+            return
+        }
+
+        let wizardView = SetupWizardView(settings: settings) { [weak self] in
+            // Wizard completed — close the window.
+            self?.wizardWindow?.close()
+        }
+        let hostingController = NSHostingController(rootView: wizardView)
+        let window = NSWindow(contentViewController: hostingController)
+        window.title = "OpenClaw Toggle — Setup"
+        window.styleMask = [.titled, .closable]
+        window.center()
+        window.isReleasedWhenClosed = false
+        window.makeKeyAndOrderFront(nil)
+
+        NSApp.setActivationPolicy(.regular)
+        NSApp.activate(ignoringOtherApps: true)
+
+        wizardWindow = window
+
+        NotificationCenter.default.addObserver(
+            forName: NSWindow.willCloseNotification,
+            object: window,
+            queue: .main
+        ) { [weak self] _ in
+            guard let strongSelf = self else { return }
+            Task { @MainActor in
+                strongSelf.wizardWindow = nil
+                // Revert to accessory if no other windows are open
+                if strongSelf.preferencesWindow?.isVisible != true
+                    && strongSelf.aboutWindow?.isVisible != true {
+                    NSApp.setActivationPolicy(.accessory)
+                }
+            }
+        }
+    }
+
     // MARK: Preferences Window
 
     func openPreferences() {
@@ -142,7 +196,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             return
         }
 
-        let prefsView = PreferencesView(settings: settings)
+        let prefsView = PreferencesView(settings: settings, updater: updater)
         let hostingController = NSHostingController(rootView: prefsView)
         let window = NSWindow(contentViewController: hostingController)
         window.title = "OpenClaw Toggle — Preferences"
@@ -167,7 +221,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             guard let strongSelf = self else { return }
             Task { @MainActor in
                 strongSelf.preferencesWindow = nil
-                NSApp.setActivationPolicy(.accessory)
+                if strongSelf.wizardWindow?.isVisible != true
+                    && strongSelf.aboutWindow?.isVisible != true {
+                    NSApp.setActivationPolicy(.accessory)
+                }
             }
         }
     }
@@ -212,8 +269,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             guard let strongSelf = self else { return }
             Task { @MainActor in
                 strongSelf.aboutWindow = nil
-                // Only revert to accessory if preferences window is also closed
-                if strongSelf.preferencesWindow?.isVisible != true {
+                // Only revert to accessory if no other windows are open
+                if strongSelf.preferencesWindow?.isVisible != true
+                    && strongSelf.wizardWindow?.isVisible != true {
                     NSApp.setActivationPolicy(.accessory)
                 }
             }

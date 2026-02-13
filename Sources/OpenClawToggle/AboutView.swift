@@ -55,7 +55,7 @@ struct AboutView: View {
 /// Static app metadata read from the Info.plist or compile-time defaults.
 enum AppInfo {
     static let version: String = {
-        Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0.0"
+        Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "2.0.0"
     }()
 
     static let build: String = {

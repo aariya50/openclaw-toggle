@@ -4,9 +4,11 @@
 import SwiftUI
 
 /// A standalone window that lets the user configure tunnel port, service
-/// labels, and plist paths — or auto-detect them from the system.
+/// labels, plist paths, gateway host — or auto-detect them from the system.
+/// Also includes health diagnostics, Launch at Login, and Check for Updates.
 struct PreferencesView: View {
     @ObservedObject var settings: AppSettings
+    var updater: SparkleUpdaterManager?
 
     /// Locally-edited port string (converted to UInt16 on save).
     @State private var portText: String = ""
@@ -81,6 +83,11 @@ struct PreferencesView: View {
                     GroupBox(label: Label("SSH Tunnel", systemImage: "network")) {
                         VStack(alignment: .leading, spacing: 8) {
                             settingsField(
+                                label: "Gateway Host:",
+                                text: $settings.gatewayHost,
+                                help: "e.g. gateway.openclaw.ai or user@host"
+                            )
+                            settingsField(
                                 label: "Port:",
                                 text: $portText,
                                 help: "Local port the tunnel forwards to"
@@ -131,6 +138,38 @@ struct PreferencesView: View {
                         .padding(.vertical, 4)
                     }
 
+                    // ── General ──────────────────────────────────────
+                    GroupBox(label: Label("General", systemImage: "gearshape")) {
+                        VStack(alignment: .leading, spacing: 8) {
+                            Toggle(isOn: $settings.launchAtLogin) {
+                                VStack(alignment: .leading, spacing: 1) {
+                                    Text("Launch at Login")
+                                        .font(.subheadline)
+                                    Text("Start OpenClaw Toggle automatically when you log in")
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                }
+                            }
+                            .toggleStyle(.switch)
+
+                            if let updater {
+                                Divider()
+                                HStack {
+                                    CheckForUpdatesButton(updater: updater)
+                                        .controlSize(.small)
+                                    Spacer()
+                                }
+                            }
+                        }
+                        .padding(.vertical, 4)
+                    }
+
+                    // ── Health Diagnostics ───────────────────────────
+                    GroupBox {
+                        HealthDiagnosticsView(settings: settings)
+                            .padding(.vertical, 4)
+                    }
+
                     // ── Footer buttons ──────────────────────────────
                     HStack {
                         Button("Reset to Defaults") {
@@ -140,12 +179,22 @@ struct PreferencesView: View {
                         .controlSize(.small)
 
                         Spacer()
+
+                        Button("Re-run Setup Wizard…") {
+                            settings.hasCompletedSetup = false
+                            // Close preferences — the app delegate will detect
+                            // hasCompletedSetup=false on next launch or can
+                            // handle it via notification.
+                            NSApp.keyWindow?.close()
+                        }
+                        .controlSize(.small)
+                        .foregroundStyle(.secondary)
                     }
                 }
                 .padding(16)
             }
         }
-        .frame(width: 420, height: 560)
+        .frame(width: 440, height: 680)
         .onAppear {
             syncFromSettings()
         }

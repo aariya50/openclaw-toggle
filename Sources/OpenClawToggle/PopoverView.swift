@@ -7,6 +7,7 @@ import SwiftUI
 /// Clean, minimal macOS-native design with text-only status and controls.
 struct PopoverView: View {
     @ObservedObject var monitor: StatusMonitor
+    @ObservedObject var updater: SparkleUpdaterManager
 
     /// Callback to open the Preferences window.
     var onOpenPreferences: (() -> Void)?
@@ -53,7 +54,7 @@ struct PopoverView: View {
             Divider()
                 .padding(.horizontal, 12)
 
-            // ── Footer: Preferences, About & Quit ─────────────────
+            // ── Footer: Preferences, About, Updates & Quit ────────
             HStack(spacing: 12) {
                 Button {
                     onOpenPreferences?()
@@ -77,6 +78,17 @@ struct PopoverView: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .help("About OpenClaw Toggle")
+
+                Button {
+                    updater.checkForUpdates()
+                } label: {
+                    Image(systemName: "arrow.triangle.2.circlepath")
+                }
+                .buttonStyle(.plain)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .disabled(!updater.canCheckForUpdates)
+                .help("Check for Updates")
 
                 Spacer()
 

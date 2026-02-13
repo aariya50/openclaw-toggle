@@ -94,3 +94,28 @@ Build succeeds. Now let's commit:
 ─── shell | developer ──────────────────────────
 command: cd /Users/ariya/Projects/OpenClawToggle && git add -A && git commit -m 'Add cleanup-on-quit: stop tunnel and node services when app quits'
 
+Let me update the TODO:
+─── todo_write | todo ──────────────────────────
+content: - [x] Add cleanup-on-quit logic to AppDelegate
+  - [x] Override applicationShouldTerminate to return .terminateLater
+  - [x] Bootout ai.openclaw.ssh-tunnel and ai.openclaw.node services
+  - [x] Call NSApp.reply(.terminateNow) after bootout completes
+  - [x] Keep existing applicationWillTerminate for stopPolling
+- [x] Build with swift build ✅
+- [x] Commit with specified message ✅ ff7ead8
+
+Done! Here's a summary of what was implemented:
+
+### Changes to `OpenClawToggleApp.swift`
+
+**New method: `applicationShouldTerminate(_:)`** — This is the key addition. When the user clicks Quit (which calls `NSApplication.shared.terminate(nil)`), macOS calls this delegate method *before* actually terminating. Here's how it works:
+
+1. **Returns `.terminateLater`** — tells macOS "hold on, I'm not ready to die yet."
+2. **Stops polling immediately** so no refresh cycles interfere with shutdown.
+3. **Spawns a `Task.detached`** that runs both bootout commands sequentially:
+   - `launchctl bootout gui/<uid>/ai.openclaw.ssh-tunnel`
+   - `launchctl bootout gui/<uid>/ai.openclaw.node`
+4. **Each `Process` uses `waitUntilExit()`** so the next command doesn't start until the previous one finishes.
+5. **After both complete**, calls `NSApplication.shared.reply(toApplicationShouldTerminate: true)` on the main actor, which tells macOS "OK, now you can terminate."
+
+The existing `applicationWillTerminate` is kept as a safety net (calls `stopPolling()` again in case of direct termination paths).

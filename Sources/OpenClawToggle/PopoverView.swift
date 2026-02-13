@@ -4,14 +4,14 @@
 import SwiftUI
 
 /// The small popover UI displayed from the menu bar icon.
-/// Clean, minimal macOS-native design with Instagram-style status ring avatar.
+/// Clean, minimal macOS-native design with text-only status and controls.
 struct PopoverView: View {
     @ObservedObject var monitor: StatusMonitor
 
     var body: some View {
         VStack(spacing: 0) {
 
-            // ── Header: Avatar + Status ──────────────────────────────
+            // ── Header: Status ────────────────────────────────────────
             headerSection
                 .padding(.horizontal, 16)
                 .padding(.top, 16)
@@ -67,9 +67,6 @@ struct PopoverView: View {
 
     private var headerSection: some View {
         HStack(spacing: 12) {
-            // Instagram-style circular avatar with status ring
-            AvatarRingView(state: monitor.state, diameter: 40)
-
             VStack(alignment: .leading, spacing: 2) {
                 Text(monitor.state.rawValue)
                     .font(.headline)
@@ -134,84 +131,5 @@ struct PopoverView: View {
     }
 }
 
-// ---------------------------------------------------------------------------
-// MARK: - Avatar Ring View (Instagram Close Friends style)
-// ---------------------------------------------------------------------------
-
-/// Draws a circular avatar with an optional Instagram-style ring.
-/// Used in both the popover header and could be reused elsewhere.
-private struct AvatarRingView: View {
-    let state: ConnectionState
-    let diameter: CGFloat
-
-    /// Ring thickness as proportion of diameter
-    private var ringWidth: CGFloat { max(2.0, diameter * 0.06) }
-    /// Gap between ring and avatar
-    private var gap: CGFloat { max(1.5, diameter * 0.04) }
-    /// Avatar diameter after subtracting ring + gap
-    private var avatarDiameter: CGFloat {
-        diameter - (ringWidth + gap) * 2
-    }
-
-    var body: some View {
-        ZStack {
-            // Ring (only when not disconnected)
-            if state != .disconnected {
-                Circle()
-                    .stroke(ringColor, lineWidth: ringWidth)
-                    .frame(width: diameter, height: diameter)
-            }
-
-            // Circular avatar
-            AlfredAvatarImage(diameter: avatarDiameter, dimmed: state == .disconnected)
-        }
-        .frame(width: diameter, height: diameter)
-    }
-
-    private var ringColor: Color {
-        switch state {
-        case .connected:    return .green
-        case .tunnelOnly:   return .yellow
-        case .disconnected: return .clear
-        }
-    }
-}
-
-// ---------------------------------------------------------------------------
-// MARK: - Alfred Avatar Image
-// ---------------------------------------------------------------------------
-
-/// Loads the Alfred icon from disk and displays it clipped to a circle.
-private struct AlfredAvatarImage: View {
-    let diameter: CGFloat
-    let dimmed: Bool
-
-    private static let image: NSImage? = {
-        let bundlePath = Bundle.main.bundlePath
-            + "/Contents/Resources/alfred-icon.png"
-        if let img = NSImage(contentsOfFile: bundlePath) { return img }
-        let fallback = NSString(
-            string: "~/Projects/OpenClawToggle/Resources/alfred-icon.png"
-        ).expandingTildeInPath
-        return NSImage(contentsOfFile: fallback)
-    }()
-
-    var body: some View {
-        Group {
-            if let nsImage = Self.image {
-                Image(nsImage: nsImage)
-                    .resizable()
-                    .scaledToFill()
-                    .frame(width: diameter, height: diameter)
-                    .clipShape(Circle())
-                    .opacity(dimmed ? 0.45 : 1.0)
-            } else {
-                Circle()
-                    .fill(.quaternary)
-                    .frame(width: diameter, height: diameter)
-            }
-        }
-    }
-}
-
-// (ServiceButtonStyle removed – using standard macOS button style)
+// (AvatarRingView and AlfredAvatarImage removed – icon is shown only in the
+// menu bar status item; the dropdown displays text-only controls.)

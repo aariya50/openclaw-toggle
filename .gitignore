@@ -20,9 +20,15 @@ Packages/
 # Build artifacts
 DerivedData/
 build/
+*.app
 *.ipa
 *.dSYM.zip
 *.dSYM
+
+# Goose / AI session logs
+goose-*.log
+.goose/
+.goosehints
 
 # Misc
 *.swp
@@ -30,4 +36,3 @@ build/
 *~
 .vscode/
 .idea/
-goose-*.log

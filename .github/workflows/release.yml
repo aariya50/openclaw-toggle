@@ -1,0 +1,91 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Select Xcode
+        run: sudo xcode-select -s /Applications/Xcode_15.2.app/Contents/Developer
+
+      - name: Extract version from tag
+        id: version
+        run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
+
+      - name: Build release binary
+        run: swift build -c release
+
+      - name: Create .app bundle
+        run: |
+          APP="OpenClawToggle.app"
+          mkdir -p "$APP/Contents/MacOS"
+          mkdir -p "$APP/Contents/Resources"
+          cp .build/release/OpenClawToggle "$APP/Contents/MacOS/"
+          cp Info.plist "$APP/Contents/"
+          [ -f Resources/alfred-icon.png ] && cp Resources/alfred-icon.png "$APP/Contents/Resources/"
+          [ -f Resources/AppIcon.icns ] && cp Resources/AppIcon.icns "$APP/Contents/Resources/"
+          echo -n "APPL????" > "$APP/Contents/PkgInfo"
+
+      - name: Zip app bundle
+        run: zip -r OpenClawToggle.app.zip OpenClawToggle.app
+
+      - name: Compute SHA256
+        id: sha
+        run: echo "SHA256=$(shasum -a 256 OpenClawToggle.app.zip | awk '{print $1}')" >> $GITHUB_OUTPUT
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: OpenClawToggle.app.zip
+          body: |
+            ## OpenClaw Toggle v${{ steps.version.outputs.VERSION }}
+
+            ### Install
+            ```bash
+            brew tap aariya50/tap && brew install openclaw-toggle
+            ```
+            Or download `OpenClawToggle.app.zip` below, unzip, and move to `/Applications/`.
+
+            **SHA256:** `${{ steps.sha.outputs.SHA256 }}`
+          generate_release_notes: false
+
+      - name: Update Homebrew tap
+        env:
+          GH_TOKEN: ${{ secrets.TAP_TOKEN }}
+        run: |
+          if [ -z "$GH_TOKEN" ]; then
+            echo "⚠️  TAP_TOKEN secret not set — skipping Homebrew tap update"
+            exit 0
+          fi
+
+          FORMULA_URL="https://api.github.com/repos/aariya50/homebrew-tap/contents/Formula/openclaw-toggle.rb"
+          CURRENT=$(curl -s -H "Authorization: token $GH_TOKEN" "$FORMULA_URL")
+          SHA_FILE=$(echo "$CURRENT" | jq -r '.sha')
+          CONTENT=$(echo "$CURRENT" | jq -r '.content' | base64 -d)
+
+          TAG="v${{ steps.version.outputs.VERSION }}"
+          REVISION="${{ github.sha }}"
+          UPDATED=$(echo "$CONTENT" | \
+            sed "s|tag:.*|tag:      \"$TAG\",|" | \
+            sed "s|revision:.*|revision: \"$REVISION\"|")
+
+          ENCODED=$(echo "$UPDATED" | base64)
+
+          curl -s -X PUT "$FORMULA_URL" \
+            -H "Authorization: token $GH_TOKEN" \
+            -H "Content-Type: application/json" \
+            -d "{
+              \"message\": \"Update openclaw-toggle to $TAG\",
+              \"content\": \"$ENCODED\",
+              \"sha\": \"$SHA_FILE\"
+            }"
+          echo "✅ Homebrew tap updated to $TAG"

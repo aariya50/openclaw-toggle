@@ -1,39 +1,20 @@
-# OpenClaw Toggle — Roadmap
+# Roadmap
 
-## v0.1 — MVP ✅ Complete
-- [x] Menu bar icon with connection status (green/yellow/red)
-- [x] Popover with tunnel + node status
-- [x] Start/Stop node toggle
-- [x] 5-second polling
-- [x] Swift Package Manager build
-- [x] Custom Alfred icon with colored glow *(Instagram Close Friends–style ring)*
-- [x] Fix popover positioning *(replaced NSPopover with NSMenu + NSHostingView)*
-- [x] Proper stop behavior *(bootout/bootstrap instead of kill)*
-
-## v1.0 — Public Release (In Progress)
-- [x] **Preferences panel** — configurable port, service labels, plist paths
-- [x] **Auto-detect** — scan for existing OpenClaw launchd services
-- [x] **Proper .app bundle** — with icon, versioning, About window, build-app.sh script
-- [x] **Homebrew formula** — `brew tap aariya50/tap && brew install openclaw-toggle`
-- [x] **GitHub Release** — v1.0.0 with zipped .app bundle
-- [x] **README** — installation guide, screenshots, requirements
-- [ ] **Launch at login** — optional auto-start on login
-- [ ] **Menu bar icon options** — choice of icon style
+## v1.0 ✅
+- Menu bar status indicator with service controls
+- Preferences panel with auto-detect
+- Homebrew formula and GitHub Releases
+- CI/CD with GitHub Actions
 
 ## v2.0 — Setup Wizard
-- [ ] **First-run wizard** — detect if OpenClaw is installed, guide setup
-- [ ] **SSH tunnel setup** — help configure the tunnel + launchd plist
-- [ ] **Node setup** — create/configure the node launchd service
-- [ ] **Health diagnostics** — troubleshoot connection issues from the app
-- [ ] **Auto-update** — Sparkle framework for in-app updates
+- First-run wizard for guided setup
+- SSH tunnel and node service configuration
+- Health diagnostics
+- Auto-update via Sparkle
 
 ## v3.0 — Power Features
-- [ ] **Logs viewer** — view node/tunnel logs from the popover
-- [ ] **Quick actions** — restart tunnel, restart node, view gateway URL
-- [ ] **Notifications** — alert when connection drops/recovers
-- [ ] **Multi-node support** — monitor multiple OpenClaw nodes
-- [ ] **Keyboard shortcut** — global hotkey to toggle node
-
----
-
-*Contributions welcome! See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.*
+- Logs viewer in popover
+- Restart / quick actions
+- Connection drop notifications
+- Multi-node support
+- Global keyboard shortcut

@@ -1,197 +1,61 @@
 # OpenClaw Toggle
 
-A lightweight, native macOS menu bar app that monitors and controls [OpenClaw](https://openclaw.ai) node and SSH tunnel services.
-
+[![CI](https://github.com/aariya50/openclaw-toggle/actions/workflows/ci.yml/badge.svg)](https://github.com/aariya50/openclaw-toggle/actions/workflows/ci.yml)
 ![macOS 14+](https://img.shields.io/badge/macOS-14%2B-blue)
 ![Swift 5.9](https://img.shields.io/badge/Swift-5.9-orange)
 ![License: MIT](https://img.shields.io/badge/License-MIT-green)
 
----
+A native macOS menu bar app that monitors and controls [OpenClaw](https://openclaw.ai) node and SSH tunnel services.
 
-## What It Does
+## Features
 
-OpenClaw Toggle sits in your menu bar and gives you at-a-glance status of your OpenClaw stack:
+- **Menu bar status ring** — green (all running), yellow (tunnel only), dim (disconnected)
+- **One-click controls** — start/stop tunnel and node services from the popover
+- **Auto-detect** — scans `~/Library/LaunchAgents/` for OpenClaw plists on first launch
+- **Configurable** — custom port, service labels, plist paths, poll interval
+- **Clean quit** — stops both services gracefully on exit
 
-| Icon | Meaning |
-|------|---------|
-| 🟢 Green ring | SSH tunnel **and** node service are running |
-| 🟡 Yellow ring | SSH tunnel active, but node service is stopped |
-| ⚫ Dimmed (no ring) | Neither tunnel nor node is running |
+## Install
 
-Click the icon to see:
-
-- **Status headline** — "Connected", "Tunnel Only", or "Disconnected"
-- **SSH Tunnel row** — status dot + Start/Stop button
-- **Node Service row** — status dot + Start/Stop button (disabled when tunnel is down)
-- **Preferences** — gear icon opens the settings panel
-- **About** — info icon shows version and links
-- **Quit** — shuts down both services cleanly before exiting
-
-Status is polled every 3 seconds (configurable in Preferences).
-
----
-
-## Screenshots
-
-> _Coming soon — the app uses a custom Alfred-inspired circular avatar icon with an Instagram Close Friends–style status ring._
-
----
-
-## Requirements
-
-- **macOS 14 (Sonoma)** or later
-- **Swift 5.9+** / Xcode 15+ (for building from source)
-- An existing SSH tunnel forwarding to a local port (default: `18789`)
-- OpenClaw launchd services installed as LaunchAgents:
-  - `~/Library/LaunchAgents/ai.openclaw.ssh-tunnel.plist`
-  - `~/Library/LaunchAgents/ai.openclaw.node.plist`
-
-> **Don't have these?** The app auto-detects OpenClaw plists on first launch. If none are found, Preferences opens automatically so you can configure paths manually.
-
----
-
-## Installation
-
-### Option A: Homebrew (recommended)
+### Homebrew (recommended)
 
 ```bash
 brew tap aariya50/tap
 brew install openclaw-toggle
+open "$(brew --prefix)/Cellar/openclaw-toggle/1.0.0/OpenClawToggle.app"
 ```
 
-Then launch:
+### GitHub Releases
 
-```bash
-open $(brew --prefix)/Cellar/openclaw-toggle/1.0.0/OpenClawToggle.app
-```
+Download `OpenClawToggle.app.zip` from [Releases](https://github.com/aariya50/openclaw-toggle/releases), unzip, and move to `/Applications/`.
 
-Optionally symlink to `/Applications/`:
-
-```bash
-ln -sf $(brew --prefix)/Cellar/openclaw-toggle/1.0.0/OpenClawToggle.app /Applications/OpenClawToggle.app
-```
-
-### Option B: Download from GitHub Releases
-
-1. Download `OpenClawToggle.app.zip` from the [Releases](https://github.com/aariya50/openclaw-toggle/releases) page
-2. Unzip and move `OpenClawToggle.app` to `/Applications/`
-3. Right-click → Open → Open (to bypass Gatekeeper on first launch)
-
-### Option C: Build from source
+### Build from source
 
 ```bash
 git clone https://github.com/aariya50/openclaw-toggle.git
 cd openclaw-toggle
-
-# Build the .app bundle (release)
 ./build-app.sh release
-
-# Run it
 open build/OpenClawToggle.app
-
-# Or install to Applications
-cp -r build/OpenClawToggle.app /Applications/
 ```
 
-### Option D: Run without bundling
+## Requirements
 
-```bash
-swift build
-.build/debug/OpenClawToggle
-```
-
-> Note: When running unbundled, the icon loads from `~/Projects/OpenClawToggle/Resources/` as a fallback.
-
----
-
-## How It Works
-
-| Component | Detail |
-|-----------|--------|
-| **Tunnel check** | `lsof -iTCP:<port> -sTCP:LISTEN` — is something listening? |
-| **Tunnel service** | `launchctl print gui/<uid>/<label>` — is the launchd service running? |
-| **Node check** | `launchctl print gui/<uid>/<label>` — parses for `state = running` or live PID |
-| **Start service** | `launchctl bootstrap gui/<uid> <plist-path>` |
-| **Stop service** | `launchctl bootout gui/<uid>/<label>` |
-| **On quit** | Bootout both services cleanly before exit |
-
-The app hides from the Dock via `LSUIElement = true` in Info.plist and `NSApp.setActivationPolicy(.accessory)`.
-
----
+- macOS 14 (Sonoma) or later
+- OpenClaw launchd services installed as LaunchAgents (`ai.openclaw.ssh-tunnel` and `ai.openclaw.node`)
 
 ## Configuration
 
-Open **Preferences** (gear icon in the popover) to configure:
+Open **Preferences** (gear icon) to configure tunnel port, service labels, plist paths, and poll interval. Click **Scan** to auto-detect installed OpenClaw services.
 
-| Setting | Default | Description |
-|---------|---------|-------------|
-| Tunnel Port | `18789` | Local port the SSH tunnel forwards to |
-| Tunnel Service Label | `ai.openclaw.ssh-tunnel` | launchd label for the tunnel |
-| Tunnel Plist Path | `~/Library/LaunchAgents/ai.openclaw.ssh-tunnel.plist` | Path to tunnel plist |
-| Node Service Label | `ai.openclaw.node` | launchd label for the node |
-| Node Plist Path | `~/Library/LaunchAgents/ai.openclaw.node.plist` | Path to node plist |
-| Poll Interval | `3` seconds | How often to check service status |
+## How It Works
 
-### Auto-detect
-
-Click **Scan** in Preferences to automatically discover OpenClaw-related plists in `~/Library/LaunchAgents/`. Detected services can be applied with one click.
-
----
-
-## Project Structure
-
-```
-OpenClawToggle/
-├── Package.swift                          # SPM manifest (macOS 14+)
-├── Info.plist                             # Bundle metadata (LSUIElement, versioning)
-├── build-app.sh                           # Build script → .app bundle
-├── Sources/OpenClawToggle/
-│   ├── OpenClawToggleApp.swift            # Entry point, AppDelegate, NSStatusItem, MenuBarIcon
-│   ├── StatusMonitor.swift                # ObservableObject — polling & shell commands
-│   ├── PopoverView.swift                  # SwiftUI popover with service controls
-│   ├── PreferencesView.swift              # Settings panel with auto-detect
-│   ├── AboutView.swift                    # About window with version info
-│   ├── AppSettings.swift                  # UserDefaults-backed configuration
-│   └── ServiceDetector.swift              # Scans ~/Library/LaunchAgents for OpenClaw plists
-├── Resources/
-│   ├── alfred-icon.png                    # Menu bar avatar icon
-│   └── AppIcon.icns                       # App icon for .app bundle
-├── ROADMAP.md
-├── README.md
-├── LICENSE
-└── .gitignore
-```
-
----
-
-## Architecture
-
-```
-┌─────────────────────────────────────────────────────────┐
-│  OpenClawToggleEntry (@main)                            │
-│  └── AppDelegate (NSApplicationDelegate)                │
-│      ├── NSStatusItem (menu bar icon)                   │
-│      ├── NSMenu → PopoverView (SwiftUI via NSHostingView)│
-│      ├── StatusMonitor (polling + launchctl)             │
-│      ├── AppSettings.shared (UserDefaults)              │
-│      ├── PreferencesView → ServiceDetector              │
-│      └── AboutView (version, links)                     │
-└─────────────────────────────────────────────────────────┘
-```
-
----
+The app uses `launchctl` to manage launchd services and `lsof` to check tunnel port status. It hides from the Dock via `LSUIElement` and polls every 3 seconds (configurable).
 
 ## Contributing
 
-Contributions are welcome! See the [ROADMAP.md](ROADMAP.md) for planned features.
-
-1. Fork the repo
-2. Create a feature branch
-3. `swift build` to make sure it compiles
-4. Submit a pull request
-
----
+1. Fork → branch → `swift build` → PR
+2. See [ROADMAP.md](ROADMAP.md) for planned features
 
 ## License
 
-This project is licensed under the [MIT License](LICENSE).
+[MIT](LICENSE)

@@ -1,0 +1,353 @@
+starting session | provider: anthropic lead model: claude-opus-4-6 worker model: claude-opus-4-6
+    session id: 20260213_8
+    working directory: /Users/ariya/Projects/OpenClawToggle
+
+
+I'll start by reading all the source files to understand the project structure.
+─── analyze | developer ──────────────────────────
+max_depth: 3
+path: /Users/ariya/Projects/OpenClawToggle
+
+
+─── text_editor | developer ──────────────────────────
+path: ~/P/O/S/OpenClawToggle/OpenClawToggleApp.swift
+command: view
+
+
+─── text_editor | developer ──────────────────────────
+path: ~/P/O/S/OpenClawToggle/PopoverView.swift
+command: view
+
+
+─── text_editor | developer ──────────────────────────
+path: ~/P/O/S/OpenClawToggle/StatusMonitor.swift
+command: view
+
+
+─── text_editor | developer ──────────────────────────
+path: ~/Projects/OpenClawToggle/Package.swift
+command: view
+
+Now I have a clear picture of all the code. Let me set up a TODO and apply the fixes.
+─── todo_write | todo ──────────────────────────
+content: - [ ] Bug 1: Remove color from Start/Stop buttons — make plain system style
+- [ ] Bug 2: Fix tunnel button showing "Stop" when tunnel is stopped
+  - [ ] checkTunnel should determine service running state via launchctl print (state=running / pid)
+  - [ ] tunnelActive should reflect process running, not just port listening
+  - [ ] Add separate portListening published property for port check
+  - [ ] Button text should use isActive only (not isLoaded) for Start/Stop label
+  - [ ] Status dots should reflect service process running, not port
+- [ ] Same logic for node service (already correct in checkNode)
+- [ ] swift build
+- [ ] Copy binary to OpenClawToggle.app/Contents/MacOS/
+- [ ] git commit
+
+Now let me analyze both bugs:
+
+**Bug 1 (Button colors):** `ServiceButtonStyle` in PopoverView.swift (lines 217-241) applies red/green colors. Need to replace with a plain system button style.
+
+**Bug 2 (Tunnel button says Stop when stopped):** Two issues:
+1. `checkTunnel()` returns `true` based on port listening (lsof), but sets `tunnelServiceLoaded` based on whether the service exists in launchd. The button label on line 121 uses `isActive || isLoaded` — so if the service is *loaded* but not *running*, it still shows "Stop".
+2. The fix: `checkTunnel()` should work like `checkNode()` — check `state = running` or `pid` to determine if the tunnel process is running. The port check should be a separate concern. The button label should only use `isActive` (is the process running), not `isLoaded`.
+
+Let me apply all fixes:
+─── text_editor | developer ──────────────────────────
+path: ~/P/O/S/OpenClawToggle/StatusMonitor.swift
+command: str_replace
+new_str:     @Published private(set) var tunnelActive: Bool = false
+    @Published private(set) var nodeRunning: Bool  = false
+    @Published private(set) var state: ConnectionState = .disconnected
+    @Published private(set) var isToggling: Bool = false
+    @Published private(set) var isTunnelToggling: Bool = false
+
+    /// Whether the tunnel port is actively listening (lsof check).
+    @Published private(set) var tunnelPortListening: Bool = false
+
+    /// Tracks whether the launchd node service is loaded (bootstrapped).
+    @Published private(set) var serviceLoaded: Bool = false
+
+    /// Tracks whether the launchd tunnel service is loaded (bootstrapped).
+    @Published private(set) var tunnelServiceLoaded: Bool = false
+old_str:     @Published private(set) var tunnelActive: Bool = false
+    @Published private(set) var nodeRunning: Bool  = false
+    @Published private(set) var state: ConnectionState = .disconnected
+    @Published private(set) var isToggling: Bool = false
+    @Published private(set) var isTunnelToggling: Bool = false
+
+    /// Tracks whether the launchd node service is loaded (bootstrapped).
+    @Published private(set) var serviceLoaded: Bool = true
+
+    /// Tracks whether the launchd tunnel service is loaded (bootstrapped).
+    @Published private(set) var tunnelServiceLoaded: Bool = true
+
+Good, the initial defaults are fixed (`false` instead of `true`). Now I need to rewrite `checkTunnel()` to use the same `state = running` / `pid` logic as `checkNode()`, and make the port check separate:
+─── text_editor | developer ──────────────────────────
+path: ~/P/O/S/OpenClawToggle/StatusMonitor.swift
+command: str_replace
+new_str:     /// Returns `true` when the tunnel service process is running (has a
+    /// running state or valid PID in launchd).  Also updates
+    /// `tunnelServiceLoaded` and `tunnelPortListening` as side-effects.
+    private func checkTunnel() async -> Bool {
+        // 1. Port check – is something actually listening on the tunnel port?
+        let lsofOutput = await runShell(
+            "/usr/sbin/lsof",
+            arguments: ["-iTCP:\(tunnelPort)", "-sTCP:LISTEN", "-P", "-n"]
+        )
+        tunnelPortListening = !lsofOutput.isEmpty
+
+        // 2. Service check – is the launchd service loaded & running?
+        let svcOutput = await runShell(
+            "/bin/launchctl",
+            arguments: ["print", "gui/\(uid)/\(tunnelServiceLabel)"]
+        )
+        let lines = svcOutput.lowercased()
+
+        if lines.contains("could not find service") || svcOutput.isEmpty {
+            tunnelServiceLoaded = false
+            return false
+        }
+
+        tunnelServiceLoaded = true
+
+        // Check for running state
+        if lines.contains("state = running") { return true }
+
+        // Check for a valid PID
+        if let range = lines.range(of: "pid = ") {
+            let after = lines[range.upperBound...]
+            let digits = after.prefix(while: { $0.isNumber })
+            if let pid = Int(digits), pid > 0 { return true }
+        }
+        return false
+    }
+old_str:     /// Returns `true` when something is listening on `tunnelPort`.
+    private func checkTunnel() async -> Bool {
+        let output = await runShell(
+            "/usr/sbin/lsof",
+            arguments: ["-iTCP:\(tunnelPort)", "-sTCP:LISTEN", "-P", "-n"]
+        )
+        let active = !output.isEmpty
+
+        // Also check if the tunnel service is loaded in launchd.
+        let svcOutput = await runShell(
+            "/bin/launchctl",
+            arguments: ["print", "gui/\(uid)/\(tunnelServiceLabel)"]
+        )
+        let svcLines = svcOutput.lowercased()
+        if svcLines.contains("could not find service") || svcOutput.isEmpty {
+            tunnelServiceLoaded = false
+        } else {
+            tunnelServiceLoaded = true
+        }
+
+        return active
+    }
+
+Now fix the PopoverView — the button label logic and the button style:
+─── text_editor | developer ──────────────────────────
+path: ~/P/O/S/OpenClawToggle/PopoverView.swift
+command: str_replace
+new_str:     private func serviceRow(
+        label: String,
+        isActive: Bool,
+        isLoaded: Bool,
+        isToggling: Bool,
+        action: @escaping () -> Void
+    ) -> some View {
+        HStack(spacing: 10) {
+            // Status dot — reflects whether the service process is running
+            Circle()
+                .fill(isActive ? Color.green : Color.red.opacity(0.7))
+                .frame(width: 7, height: 7)
+
+            // Label
+            Text(label)
+                .font(.subheadline)
+
+            Spacer()
+
+            // Toggle button
+            if isToggling {
+                ProgressView()
+                    .controlSize(.small)
+                    .frame(width: 52, height: 22)
+            } else {
+                Button(isActive ? "Stop" : "Start") {
+                    action()
+                }
+                .controlSize(.small)
+            }
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 10)
+    }
+old_str:     private func serviceRow(
+        label: String,
+        isActive: Bool,
+        isLoaded: Bool,
+        isToggling: Bool,
+        action: @escaping () -> Void
+    ) -> some View {
+        HStack(spacing: 10) {
+            // Status dot
+            Circle()
+                .fill(isActive ? Color.green : Color.red.opacity(0.7))
+                .frame(width: 7, height: 7)
+
+            // Label
+            Text(label)
+                .font(.subheadline)
+
+            Spacer()
+
+            // Toggle button
+            if isToggling {
+                ProgressView()
+                    .controlSize(.small)
+                    .frame(width: 52, height: 22)
+            } else {
+                Button(isActive || isLoaded ? "Stop" : "Start") {
+                    action()
+                }
+                .buttonStyle(ServiceButtonStyle(isActive: isActive || isLoaded))
+            }
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 10)
+    }
+
+Now remove the unused `ServiceButtonStyle` since we're no longer using it:
+─── text_editor | developer ──────────────────────────
+path: ~/P/O/S/OpenClawToggle/PopoverView.swift
+command: str_replace
+new_str: // (ServiceButtonStyle removed – using standard macOS button style)
+old_str: // ---------------------------------------------------------------------------
+// MARK: - Service Button Style
+// ---------------------------------------------------------------------------
+
+/// A clean, minimal button style for start/stop service controls.
+private struct ServiceButtonStyle: ButtonStyle {
+    let isActive: Bool
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .font(.caption.weight(.medium))
+            .foregroundStyle(isActive ? .red : .green)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 4)
+            .background(
+                RoundedRectangle(cornerRadius: 6)
+                    .fill(isActive
+                        ? Color.red.opacity(0.1)
+                        : Color.green.opacity(0.1))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 6)
+                    .stroke(isActive
+                        ? Color.red.opacity(0.25)
+                        : Color.green.opacity(0.25),
+                        lineWidth: 0.5)
+            )
+            .opacity(configuration.isPressed ? 0.7 : 1.0)
+    }
+}
+
+Now let me also need to fix the toggle logic in StatusMonitor. The `toggleNode` and `toggleTunnel` methods use `serviceLoaded`/`tunnelServiceLoaded` for deciding whether to stop — but now we need them to also use `isActive` properly. Let me review the current toggle logic once more:
+─── text_editor | developer ──────────────────────────
+path: ~/P/O/S/OpenClawToggle/StatusMonitor.swift
+command: view
+view_range: 118, 170
+
+The toggle logic using `nodeRunning || serviceLoaded` and `tunnelActive || tunnelServiceLoaded` is actually correct for the *action* — if the service is loaded (even if not running), clicking the button should bootout (stop/unload). If neither running nor loaded, it should bootstrap (start). The key fix was that:
+
+1. The **button label** now only uses `isActive` (not `isActive || isLoaded`), so it shows the correct text.
+2. The **toggle action** still correctly uses `isActive || isLoaded` to decide whether to bootout or bootstrap.
+
+Let me verify the final state of both files:
+─── text_editor | developer ──────────────────────────
+path: ~/P/O/S/OpenClawToggle/PopoverView.swift
+command: view
+
+
+─── text_editor | developer ──────────────────────────
+path: ~/P/O/S/OpenClawToggle/StatusMonitor.swift
+command: view
+
+Everything looks clean. Now let's build:
+─── shell | developer ──────────────────────────
+command: cd /Users/ariya/Projects/OpenClawToggle && swift build 2>&1
+
+Build succeeded. Now copy the binary and commit:
+─── shell | developer ──────────────────────────
+command: cd /Users/ariya/Projects/OpenClawToggle && ls -la OpenClawToggle.app/Contents/MacOS/ 2>&1
+
+
+─── shell | developer ──────────────────────────
+command: cd /Users/ariya/Projects/OpenClawToggle && cp .build/debug/OpenClawToggle OpenClawToggle.app/Contents/MacOS/OpenClawToggle && echo "Binary copied successfully"
+
+
+─── shell | developer ──────────────────────────
+command: cd /Users/ariya/Projects/OpenClawToggle && git add -A && git diff --cached --stat
+
+Those `.log` files look like leftover goose session logs. Let me exclude them from the commit:
+─── shell | developer ──────────────────────────
+command: cd /Users/ariya/Projects/OpenClawToggle && git reset HEAD goose-button-fix.log goose-ui-redesign.log 2>&1 && git commit -m "Fix two UI bugs: plain buttons + correct tunnel running state
+
+Bug 1: Remove colored ServiceButtonStyle from Start/Stop buttons.
+Use standard macOS .controlSize(.small) button style instead of
+custom red/green styled buttons.
+
+Bug 2: Fix tunnel button showing 'Stop' when tunnel is already stopped.
+- checkTunnel() now uses launchctl print to check state=running / pid,
+  matching the same logic as checkNode(), instead of relying on lsof
+  port check alone.
+- Button label now uses only isActive (process running) not isLoaded
+  (service registered) to decide Start vs Stop text.
+- Port listening (lsof) tracked separately as tunnelPortListening.
+- Default serviceLoaded/tunnelServiceLoaded changed from true to false
+  so initial state is correct before first poll completes." 2>&1
+
+Now let me update the TODO:
+─── todo_write | todo ──────────────────────────
+content: - [x] Bug 1: Remove color from Start/Stop buttons — make plain system style
+- [x] Bug 2: Fix tunnel button showing "Stop" when tunnel is stopped
+  - [x] checkTunnel uses launchctl print (state=running / pid) like checkNode
+  - [x] tunnelActive reflects process running, not just port listening
+  - [x] Added separate tunnelPortListening published property for port check
+  - [x] Button text uses isActive only (not isLoaded) for Start/Stop label
+  - [x] Status dots reflect service process running, not port
+- [x] Same logic for node service (already correct in checkNode)
+- [x] swift build ✅
+- [x] Copy binary to OpenClawToggle.app/Contents/MacOS/ ✅
+- [x] git commit (9bc72f7) ✅
+
+Both bugs are fixed, built, deployed, and committed. Here's a summary:
+
+---
+
+## Changes Made
+
+### Bug 1: Plain Start/Stop Buttons
+**File: `PopoverView.swift`**
+- Removed the custom `ServiceButtonStyle` that applied red/green colors, tinted backgrounds, and colored borders
+- Buttons now use the standard macOS style with just `.controlSize(.small)` — neutral, plain system buttons
+
+### Bug 2: Tunnel Button Showing "Stop" When Stopped
+**File: `StatusMonitor.swift`**
+
+The root cause was two-fold:
+
+1. **`checkTunnel()` was wrong** — it returned `true` based on port `18789` listening (lsof), not whether the launchd service process was actually running. A service could be loaded but not running, or the port could be held by something else.
+
+   **Fix:** Rewrote `checkTunnel()` to use the same `launchctl print` → `state = running` / `pid` logic as `checkNode()`. Port listening is now tracked separately as `tunnelPortListening`.
+
+2. **Button label used `isActive || isLoaded`** — so even when the process wasn't running, if the service was merely *registered* in launchd (`isLoaded = true`), the button showed "Stop".
+
+   **Fix:** Button label now uses only `isActive` (is the process running). The toggle *action* still correctly uses `isActive || isLoaded` to decide bootout vs bootstrap.
+
+3. **Default values were `true`** — `serviceLoaded` and `tunnelServiceLoaded` defaulted to `true`, so before the first poll completed, buttons would incorrectly show "Stop".
+
+   **Fix:** Changed defaults to `false`.
+
+### Commit: `9bc72f7`
+DONE

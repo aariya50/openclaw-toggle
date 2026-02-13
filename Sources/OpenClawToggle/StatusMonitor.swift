@@ -160,6 +160,13 @@ final class StatusMonitor: ObservableObject {
                 "bootout", "gui/\(uid)/\(tunnelServiceLabel)"
             ])
             tunnelServiceLoaded = false
+
+            // The node cannot function without the tunnel, so reflect
+            // the stopped state in the UI immediately — don't wait for
+            // the next poll cycle.
+            tunnelActive = false
+            nodeRunning  = false
+            state        = .disconnected
         } else {
             // Only bootstrap the tunnel plist — nothing else.
             await runShell("/bin/launchctl", arguments: [

@@ -795,3 +795,64 @@ StatusMonitor:
 - checkTunnel() now also checks launchd service loaded state
 - Kept 5-second polling interval" 2>&1
 
+Now let me update the TODO:
+─── todo_write | todo ──────────────────────────
+content: # OpenClawToggle UI Redesign
+
+- [x] Rewrite StatusMonitor.swift
+  - [x] Add tunnelRunning / tunnelServiceLoaded published state
+  - [x] Add toggleTunnel() method (bootout/bootstrap for ssh-tunnel)
+  - [x] Add isTunnelToggling state
+  - [x] Keep 5-second polling
+- [x] Rewrite OpenClawToggleApp.swift (MenuBarIcon)
+  - [x] Circular clipped avatar (22x22 canvas)
+  - [x] Instagram-style green ring when connected
+  - [x] Yellow ring when tunnel only
+  - [x] No ring + dimmed (0.45 opacity) when disconnected
+  - [x] Ring: 2px thick with 1.5px gap
+  - [x] isTemplate = false
+- [x] Rewrite PopoverView.swift
+  - [x] Header: 40px circular avatar with status ring + status text + subtitle
+  - [x] Controls: two toggle rows (SSH Tunnel / Node Service) with dot, label, Start/Stop button
+  - [x] ServiceButtonStyle with colored backgrounds
+  - [x] Quit: subtle right-aligned caption text button
+  - [x] Clean styling: 280px width, proper fonts, dividers, spacing
+- [x] swift build ✅ (0.73s)
+- [x] Copy binary to OpenClawToggle.app/Contents/MacOS/
+- [x] Git commit (b73cef9)
+
+
+All done! Here's a summary of everything that was implemented:
+
+---
+
+## ✅ UI Redesign Complete
+
+### Menu Bar Icon — Instagram Close Friends Style
+- **22×22 canvas** with the Alfred icon **clipped to a circle**
+- **Connected** (tunnel + node): bright **green ring** around avatar
+- **Tunnel Only**: **yellow ring** around avatar
+- **Disconnected**: **no ring**, avatar dimmed to 45% opacity
+- Ring is **2px thick** with a **1.5px gap** between ring and avatar image
+- `isTemplate = false` on all generated images
+
+### Popover — Clean & Minimal
+- **Header**: 40px circular avatar with Instagram-style status ring + status headline + contextual subtitle ("All systems operational" / "Node service is down" / "All services stopped")
+- **Two service rows**: SSH Tunnel and Node Service, each with:
+  - Color-coded status dot (green/red)
+  - Service label
+  - **Start/Stop button** with custom `ServiceButtonStyle` (green tint for Start, red tint for Stop, rounded corners, subtle border)
+- **Quit**: small, right-aligned, tertiary-color caption button — very unobtrusive
+- **280px** width with proper padding, dividers, and spacing
+
+### StatusMonitor — New Tunnel Controls
+- **`toggleTunnel()`** method: `launchctl bootout gui/501/ai.openclaw.ssh-tunnel` to stop, `launchctl bootstrap gui/501 ~/Library/LaunchAgents/ai.openclaw.ssh-tunnel.plist` to start
+- New published state: `tunnelServiceLoaded`, `isTunnelToggling`
+- `checkTunnel()` now also queries launchd to track whether the tunnel service is loaded
+- 5-second polling preserved
+
+### Build & Deploy
+- `swift build` — ✅ compiled in 0.73s
+- Binary copied to `OpenClawToggle.app/Contents/MacOS/`
+- Committed as `b73cef9`
+DONE

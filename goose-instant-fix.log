@@ -1,0 +1,65 @@
+starting session | provider: anthropic lead model: claude-opus-4-6 worker model: claude-opus-4-6
+    session id: 20260213_10
+    working directory: /Users/ariya/Projects/OpenClawToggle
+
+
+Let me start by reading the file and setting up a todo list.
+─── text_editor | developer ──────────────────────────
+path: ~/Projects/OpenClawToggle/StatusMonitor.swift
+command: view
+
+-32603: The path '/Users/ariya/Projects/OpenClawToggle/StatusMonitor.swift' does not exist or is not accessible.
+─── shell | developer ──────────────────────────
+command: cd ~/Projects/OpenClawToggle && rg --files | rg -i statusmonitor
+
+
+─── shell | developer ──────────────────────────
+command: cd ~/Projects/OpenClawToggle && find . -name "*StatusMonitor*" -o -name "*statusmonitor*" 2>/dev/null
+
+
+─── text_editor | developer ──────────────────────────
+path: ~/P/O/S/OpenClawToggle/StatusMonitor.swift
+command: view
+
+Now I can see the file. Let me write up the todo and make the fix.
+─── todo_write | todo ──────────────────────────
+content: - [x] Read StatusMonitor.swift
+- [ ] In toggleTunnel(), after bootout, immediately set tunnelActive=false, nodeRunning=false, state=.disconnected
+- [ ] swift build
+- [ ] Copy binary to OpenClawToggle.app/Contents/MacOS/
+- [ ] git commit
+
+The fix is straightforward. After the `bootout` call on line 161, and the `tunnelServiceLoaded = false` on line 162, I need to add the three immediate UI state updates before the sleep+refresh:
+─── text_editor | developer ──────────────────────────
+path: ~/P/O/S/OpenClawToggle/StatusMonitor.swift
+command: str_replace
+new_str:             tunnelServiceLoaded = false
+
+            // The node cannot function without the tunnel, so reflect
+            // the stopped state in the UI immediately — don't wait for
+            // the next poll cycle.
+            tunnelActive = false
+            nodeRunning  = false
+            state        = .disconnected
+        } else {
+old_str:             tunnelServiceLoaded = false
+        } else {
+
+Edit looks correct. Now let's build, copy the binary, and commit:
+─── shell | developer ──────────────────────────
+command: cd ~/Projects/OpenClawToggle && swift build 2>&1
+
+Build succeeded. Now copy the binary and commit:
+─── shell | developer ──────────────────────────
+command: cd ~/Projects/OpenClawToggle && cp .build/arm64-apple-macosx/debug/OpenClawToggle OpenClawToggle.app/Contents/MacOS/OpenClawToggle 2>&1
+
+
+─── shell | developer ──────────────────────────
+command: cd ~/Projects/OpenClawToggle && git add -A && git commit -m "Instantly reflect disconnected state when tunnel is stopped
+
+When toggleTunnel() boots out the tunnel service, immediately set
+tunnelActive=false, nodeRunning=false, and state=.disconnected
+before waiting for the poll refresh. The node cannot function
+without the tunnel, so the UI should show this instantly rather
+than waiting 800ms+ for the next refresh cycle." 2>&1
+

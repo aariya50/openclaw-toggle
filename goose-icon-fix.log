@@ -148,3 +148,22 @@ command: cd /Users/ariya/Projects/OpenClawToggle && git add -A && git commit -m 
 - Set isTemplate = false so colors render properly
 - Remove all emoji usage from MenuBarIcon"
 
+All done. Here's a summary of what was changed:
+
+### Changes to `MenuBarIcon` in `OpenClawToggleApp.swift`
+
+1. **Image loading** — Added a `baseIcon` static property that:
+   - First tries `Bundle.main.bundlePath + "/Contents/Resources/alfred-icon.png"` (works when running as the `.app` bundle)
+   - Falls back to `~/Projects/OpenClawToggle/Resources/alfred-icon.png` (for development)
+   - The image is loaded once and cached as a static lazy property
+
+2. **18×18 resize** — The loaded 318×334 PNG is drawn into the 18×18 canvas via `base.draw(in: rect, ...)`, which handles the scaling
+
+3. **6px status dot** — A colored circle (green/yellow/red based on connection state) is drawn in the bottom-right corner as a badge
+
+4. **`isTemplate = false`** — Set on the composed image so macOS renders the actual colors instead of treating it as a template
+
+5. **No emoji** — All 🎩 emoji drawing code has been removed
+
+Build succeeded, binary copied to `OpenClawToggle.app/Contents/MacOS/`, and committed as `6c4f721`.
+DONE

@@ -38,10 +38,13 @@ final class StatusMonitor: ObservableObject {
     @Published private(set) var nodeRunning: Bool  = false
     @Published private(set) var state: ConnectionState = .disconnected
     @Published private(set) var isToggling: Bool = false
+    @Published private(set) var isTunnelToggling: Bool = false
 
-    /// Tracks whether the launchd service is loaded (bootstrapped).
-    /// When `false`, the service has been booted out and won't auto-restart.
+    /// Tracks whether the launchd node service is loaded (bootstrapped).
     @Published private(set) var serviceLoaded: Bool = true
+
+    /// Tracks whether the launchd tunnel service is loaded (bootstrapped).
+    @Published private(set) var tunnelServiceLoaded: Bool = true
 
     // MARK: Configuration
 
@@ -49,7 +52,10 @@ final class StatusMonitor: ObservableObject {
     private let tunnelPort: UInt16 = 18789
 
     /// Launchd service label for the OpenClaw node.
-    private let serviceLabel = "ai.openclaw.node"
+    private let nodeServiceLabel = "ai.openclaw.node"
+
+    /// Launchd service label for the SSH tunnel.
+    private let tunnelServiceLabel = "ai.openclaw.ssh-tunnel"
 
     /// How often (in seconds) to refresh status.
     private let pollInterval: TimeInterval = 5
@@ -60,9 +66,14 @@ final class StatusMonitor: ObservableObject {
             ?? String(getuid())
     }()
 
-    /// Path to the LaunchAgent plist.
-    private var plistPath: String {
-        NSHomeDirectory() + "/Library/LaunchAgents/\(serviceLabel).plist"
+    /// Path to the node LaunchAgent plist.
+    private var nodePlistPath: String {
+        NSHomeDirectory() + "/Library/LaunchAgents/\(nodeServiceLabel).plist"
+    }
+
+    /// Path to the tunnel LaunchAgent plist.
+    private var tunnelPlistPath: String {
+        NSHomeDirectory() + "/Library/LaunchAgents/\(tunnelServiceLabel).plist"
     }
 
     private var pollTask: Task<Void, Never>?
@@ -103,35 +114,50 @@ final class StatusMonitor: ObservableObject {
         }
     }
 
-    // MARK: Toggle
+    // MARK: Toggle Node
 
     /// Start or stop the launchd node service.
-    ///
-    /// To **stop**: `launchctl bootout gui/<uid>/<label>` which unloads
-    /// the service entirely so KeepAlive cannot restart it.
-    ///
-    /// To **start**: `launchctl bootstrap gui/<uid> <plist>` which
-    /// re-loads the service and starts it due to RunAtLoad.
     func toggleNode() async {
         guard !isToggling else { return }
         isToggling = true
         defer { isToggling = false }
 
         if nodeRunning || serviceLoaded {
-            // Bootout unloads the service so KeepAlive won't restart it.
             await runShell("/bin/launchctl", arguments: [
-                "bootout", "gui/\(uid)/\(serviceLabel)"
+                "bootout", "gui/\(uid)/\(nodeServiceLabel)"
             ])
             serviceLoaded = false
         } else {
-            // Bootstrap re-loads the plist; RunAtLoad will start the process.
             await runShell("/bin/launchctl", arguments: [
-                "bootstrap", "gui/\(uid)", plistPath
+                "bootstrap", "gui/\(uid)", nodePlistPath
             ])
             serviceLoaded = true
         }
 
-        // Brief pause so launchd has time to act, then refresh.
+        try? await Task.sleep(for: .milliseconds(800))
+        await refresh()
+    }
+
+    // MARK: Toggle Tunnel
+
+    /// Start or stop the launchd SSH tunnel service.
+    func toggleTunnel() async {
+        guard !isTunnelToggling else { return }
+        isTunnelToggling = true
+        defer { isTunnelToggling = false }
+
+        if tunnelActive || tunnelServiceLoaded {
+            await runShell("/bin/launchctl", arguments: [
+                "bootout", "gui/\(uid)/\(tunnelServiceLabel)"
+            ])
+            tunnelServiceLoaded = false
+        } else {
+            await runShell("/bin/launchctl", arguments: [
+                "bootstrap", "gui/\(uid)", tunnelPlistPath
+            ])
+            tunnelServiceLoaded = true
+        }
+
         try? await Task.sleep(for: .milliseconds(800))
         await refresh()
     }
@@ -144,30 +170,41 @@ final class StatusMonitor: ObservableObject {
             "/usr/sbin/lsof",
             arguments: ["-iTCP:\(tunnelPort)", "-sTCP:LISTEN", "-P", "-n"]
         )
-        return !output.isEmpty
+        let active = !output.isEmpty
+
+        // Also check if the tunnel service is loaded in launchd.
+        let svcOutput = await runShell(
+            "/bin/launchctl",
+            arguments: ["print", "gui/\(uid)/\(tunnelServiceLabel)"]
+        )
+        let svcLines = svcOutput.lowercased()
+        if svcLines.contains("could not find service") || svcOutput.isEmpty {
+            tunnelServiceLoaded = false
+        } else {
+            tunnelServiceLoaded = true
+        }
+
+        return active
     }
 
     /// Returns `true` when the launchd service has a running PID.
     /// Also updates `serviceLoaded` based on whether the service exists.
     private func checkNode() async -> Bool {
         let output = await runShell(
-            "/bin/launchctl", arguments: ["print", "gui/\(uid)/\(serviceLabel)"]
+            "/bin/launchctl", arguments: ["print", "gui/\(uid)/\(nodeServiceLabel)"]
         )
 
         let lines = output.lowercased()
 
-        // If launchctl can't find the service, it's been booted out.
         if lines.contains("could not find service") || output.isEmpty {
             serviceLoaded = false
             return false
         }
 
-        // Service is loaded in launchd.
         serviceLoaded = true
 
         if lines.contains("state = running") { return true }
 
-        // Check pid line as fallback.
         if let range = lines.range(of: "pid = ") {
             let after = lines[range.upperBound...]
             let digits = after.prefix(while: { $0.isNumber })

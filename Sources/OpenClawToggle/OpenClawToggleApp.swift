@@ -94,14 +94,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 }
 
 // ---------------------------------------------------------------------------
-// MARK: - Menu Bar Icon
+// MARK: - Menu Bar Icon (Instagram Close Friends style)
 // ---------------------------------------------------------------------------
 
-/// Creates a composited menu bar icon: alfred-icon.png resized to 18×18 with
-/// a small colored status dot badge in the bottom-right corner.
+/// Creates a composited menu bar icon: alfred-icon.png clipped to a circle
+/// with an Instagram Close Friends style ring around it.
+///
+/// - Connected (tunnel + node): bright green ring
+/// - Tunnel Only: yellow ring
+/// - Disconnected: no ring, avatar slightly dimmed
 enum MenuBarIcon {
-    /// Standard menu bar icon size.
-    static let size = NSSize(width: 18, height: 18)
+    /// Total canvas size for the menu bar icon.
+    static let size = NSSize(width: 22, height: 22)
 
     /// Cached base icon loaded once from disk.
     private static let baseIcon: NSImage? = {
@@ -120,32 +124,56 @@ enum MenuBarIcon {
 
     static func create(for state: ConnectionState) -> NSImage {
         let img = NSImage(size: size, flipped: false) { rect in
-            // Draw the base icon resized to 18×18
-            if let base = baseIcon {
-                base.draw(
-                    in: rect,
-                    from: NSRect(origin: .zero, size: base.size),
-                    operation: .sourceOver,
-                    fraction: 1.0
+
+            let center = NSPoint(x: rect.midX, y: rect.midY)
+
+            // Layout constants
+            let ringLineWidth: CGFloat = 2.0
+            let gapWidth: CGFloat = 1.5
+            let ringOuterRadius: CGFloat = min(rect.width, rect.height) / 2.0
+            let ringCenterRadius = ringOuterRadius - ringLineWidth / 2.0
+            let avatarRadius = ringOuterRadius - ringLineWidth - gapWidth
+
+            // ── Draw ring (if not disconnected) ──────────────────────
+            if state != .disconnected {
+                let ringColor: NSColor = switch state {
+                case .connected:  .systemGreen
+                case .tunnelOnly: .systemYellow
+                case .disconnected: .clear  // won't reach
+                }
+                ringColor.setStroke()
+                let ringPath = NSBezierPath()
+                ringPath.appendArc(
+                    withCenter: center,
+                    radius: ringCenterRadius,
+                    startAngle: 0,
+                    endAngle: 360
                 )
+                ringPath.lineWidth = ringLineWidth
+                ringPath.stroke()
             }
 
-            // Draw a 6px colored status dot in the bottom-right corner
-            let dotSize: CGFloat = 6
-            let dotColor: NSColor = switch state {
-            case .connected:    .systemGreen
-            case .tunnelOnly:   .systemYellow
-            case .disconnected: .systemRed
-            }
-            dotColor.setFill()
-            let dotRect = NSRect(
-                x: rect.width - dotSize,
-                y: 0,
-                width: dotSize,
-                height: dotSize
+            // ── Clip & draw circular avatar ──────────────────────────
+            let avatarDiameter = avatarRadius * 2
+            let avatarRect = NSRect(
+                x: center.x - avatarRadius,
+                y: center.y - avatarRadius,
+                width: avatarDiameter,
+                height: avatarDiameter
             )
-            let dot = NSBezierPath(ovalIn: dotRect)
-            dot.fill()
+
+            if let base = baseIcon {
+                NSGraphicsContext.saveGraphicsState()
+                let clipPath = NSBezierPath(ovalIn: avatarRect)
+                clipPath.addClip()
+                base.draw(
+                    in: avatarRect,
+                    from: NSRect(origin: .zero, size: base.size),
+                    operation: .sourceOver,
+                    fraction: state == .disconnected ? 0.45 : 1.0
+                )
+                NSGraphicsContext.restoreGraphicsState()
+            }
 
             return true
         }

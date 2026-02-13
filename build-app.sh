@@ -58,11 +58,38 @@ fi
 # ── Step 6: Create PkgInfo ────────────────────────────────────────
 echo -n "APPL????" > "${APP_BUNDLE}/Contents/PkgInfo"
 
+# ── Step 7: Bundle Sparkle.framework ──────────────────────────────
+echo "→ Bundling Sparkle.framework..."
+SPARKLE_SRC=".build/artifacts/sparkle/Sparkle/Sparkle.xcframework/macos-arm64_x86_64/Sparkle.framework"
+if [[ ! -d "$SPARKLE_SRC" ]]; then
+    echo "❌ Sparkle.framework not found at $SPARKLE_SRC"
+    echo "   Run 'swift build' first to fetch SPM dependencies."
+    exit 1
+fi
+mkdir -p "${APP_BUNDLE}/Contents/Frameworks"
+cp -aR "$SPARKLE_SRC" "${APP_BUNDLE}/Contents/Frameworks/Sparkle.framework"
+
+# ── Step 8: Fix rpath so binary finds Sparkle in Contents/Frameworks ──
+echo "→ Updating rpath..."
+BINARY="${APP_BUNDLE}/Contents/MacOS/${APP_NAME}"
+# Add @loader_path/../Frameworks if not already present
+if ! otool -l "$BINARY" | grep -A2 LC_RPATH | grep -q '@loader_path/../Frameworks'; then
+    install_name_tool -add_rpath '@loader_path/../Frameworks' "$BINARY"
+fi
+
+# ── Step 9: Ad-hoc code sign (covers framework + binary) ─────────
+echo "→ Code signing..."
+# Remove extended attributes that cause "resource fork, Finder information, or similar detritus" errors
+xattr -cr "$APP_BUNDLE"
+codesign --force --deep --sign - "${APP_BUNDLE}/Contents/Frameworks/Sparkle.framework"
+codesign --force --deep --sign - "$APP_BUNDLE"
+
 # ── Done ──────────────────────────────────────────────────────────
 echo ""
 echo "✅ Built: ${APP_BUNDLE}"
 echo "   Version: ${VERSION}"
 echo "   Binary:  $(du -sh "${APP_BUNDLE}/Contents/MacOS/${APP_NAME}" | cut -f1)"
+echo "   Sparkle: $(du -sh "${APP_BUNDLE}/Contents/Frameworks/Sparkle.framework" | cut -f1)"
 echo ""
 echo "To run:  open ${APP_BUNDLE}"
 echo "To install:  cp -r ${APP_BUNDLE} /Applications/"

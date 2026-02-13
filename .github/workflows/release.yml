@@ -29,14 +29,49 @@ jobs:
           APP="OpenClawToggle.app"
           mkdir -p "$APP/Contents/MacOS"
           mkdir -p "$APP/Contents/Resources"
+          mkdir -p "$APP/Contents/Frameworks"
           cp .build/release/OpenClawToggle "$APP/Contents/MacOS/"
           cp Info.plist "$APP/Contents/"
           [ -f Resources/alfred-icon.png ] && cp Resources/alfred-icon.png "$APP/Contents/Resources/"
           [ -f Resources/AppIcon.icns ] && cp Resources/AppIcon.icns "$APP/Contents/Resources/"
           echo -n "APPL????" > "$APP/Contents/PkgInfo"
 
+      - name: Bundle Sparkle.framework
+        run: |
+          APP="OpenClawToggle.app"
+          SPARKLE_SRC=".build/artifacts/sparkle/Sparkle/Sparkle.xcframework/macos-arm64_x86_64/Sparkle.framework"
+          if [ ! -d "$SPARKLE_SRC" ]; then
+            echo "❌ Sparkle.framework not found at $SPARKLE_SRC"
+            exit 1
+          fi
+          cp -aR "$SPARKLE_SRC" "$APP/Contents/Frameworks/Sparkle.framework"
+          echo "✅ Bundled Sparkle.framework"
+          ls -la "$APP/Contents/Frameworks/"
+
+      - name: Fix rpath for Sparkle
+        run: |
+          BINARY="OpenClawToggle.app/Contents/MacOS/OpenClawToggle"
+          # Add @loader_path/../Frameworks so the binary finds Sparkle in Contents/Frameworks
+          if ! otool -l "$BINARY" | grep -A2 LC_RPATH | grep -q '@loader_path/../Frameworks'; then
+            install_name_tool -add_rpath '@loader_path/../Frameworks' "$BINARY"
+            echo "✅ Added @loader_path/../Frameworks to rpath"
+          else
+            echo "ℹ️  @loader_path/../Frameworks already in rpath"
+          fi
+          echo "Current rpaths:"
+          otool -l "$BINARY" | grep -A2 LC_RPATH
+
+      - name: Code sign
+        run: |
+          APP="OpenClawToggle.app"
+          # Remove extended attributes that cause codesign "detritus" errors
+          xattr -cr "$APP"
+          codesign --force --deep --sign - "$APP/Contents/Frameworks/Sparkle.framework"
+          codesign --force --deep --sign - "$APP"
+          echo "✅ Ad-hoc signed"
+
       - name: Zip app bundle
-        run: zip -r OpenClawToggle.app.zip OpenClawToggle.app
+        run: zip -ry OpenClawToggle.app.zip OpenClawToggle.app
 
       - name: Compute SHA256
         id: sha

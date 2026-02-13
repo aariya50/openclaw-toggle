@@ -52,6 +52,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         ProcessInfo.processInfo.disableAutomaticTermination("Menu bar app must stay alive")
         ProcessInfo.processInfo.disableSuddenTermination()
 
+        // ── Install a main menu with File > Close (Cmd+W) ────────────
+        installMainMenu()
+
         // ── First-run: show Setup Wizard ──────────────────────────────
         if !settings.hasCompletedSetup {
             // Try auto-detect first
@@ -78,10 +81,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             monitor: monitor,
             updater: updater,
             onOpenPreferences: { [weak self] in
-                self?.openPreferences()
+                self?.scheduleOpenPreferences()
             },
             onOpenAbout: { [weak self] in
-                self?.openAbout()
+                self?.scheduleOpenAbout()
             }
         )
         let hostingView = NSHostingView(rootView: contentView)
@@ -130,12 +133,66 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         monitor.stopPolling()
     }
 
+    // MARK: Main Menu (Cmd+W support)
+
+    /// Installs a minimal main menu bar so that Cmd+W works to close
+    /// the frontmost window (Preferences, About, Setup Wizard).
+    private func installMainMenu() {
+        let mainMenu = NSMenu()
+
+        // Application menu (required by macOS)
+        let appMenuItem = NSMenuItem()
+        let appMenu = NSMenu()
+        let quitItem = NSMenuItem(
+            title: "Quit OpenClaw Toggle",
+            action: #selector(NSApplication.terminate(_:)),
+            keyEquivalent: "q"
+        )
+        appMenu.addItem(quitItem)
+        appMenuItem.submenu = appMenu
+        mainMenu.addItem(appMenuItem)
+
+        // File menu with Close (Cmd+W)
+        let fileMenuItem = NSMenuItem()
+        let fileMenu = NSMenu(title: "File")
+        let closeItem = NSMenuItem(
+            title: "Close Window",
+            action: #selector(NSWindow.performClose(_:)),
+            keyEquivalent: "w"
+        )
+        fileMenu.addItem(closeItem)
+        fileMenuItem.submenu = fileMenu
+        mainMenu.addItem(fileMenuItem)
+
+        NSApp.mainMenu = mainMenu
+    }
+
     // MARK: NSMenuDelegate
 
     func menuWillOpen(_ menu: NSMenu) {
         // Resize the hosting view each time the menu opens to pick up
         // any content size changes from SwiftUI.
         hostingView?.setFrameSize(hostingView?.fittingSize ?? .zero)
+    }
+
+    // MARK: Deferred open helpers (Bug #1 fix)
+
+    /// Schedule opening Preferences after the menu finishes closing.
+    /// This avoids the menu tracking loop conflict where clicking a
+    /// button inside the menu's NSHostingView races with cancelTracking.
+    private func scheduleOpenPreferences() {
+        menu.cancelTracking()
+        DispatchQueue.main.async { [weak self] in
+            self?.openPreferences()
+        }
+    }
+
+    /// Schedule opening About after the menu finishes closing.
+    private func scheduleOpenAbout() {
+        menu.cancelTracking()
+        DispatchQueue.main.async { [weak self] in
+            self?.openAbout()
+        }
     }
 
     // MARK: Setup Wizard
@@ -187,9 +244,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     // MARK: Preferences Window
 
     func openPreferences() {
-        // Close the menu if it's open.
-        menu.cancelTracking()
-
         if let existing = preferencesWindow, existing.isVisible {
             existing.makeKeyAndOrderFront(nil)
             NSApp.activate(ignoringOtherApps: true)
@@ -239,8 +293,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     // MARK: About Window
 
     func openAbout() {
-        menu.cancelTracking()
-
         if let existing = aboutWindow, existing.isVisible {
             existing.makeKeyAndOrderFront(nil)
             NSApp.activate(ignoringOtherApps: true)

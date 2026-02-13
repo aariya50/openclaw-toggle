@@ -8,6 +8,12 @@ import SwiftUI
 struct PopoverView: View {
     @ObservedObject var monitor: StatusMonitor
 
+    /// Callback to open the Preferences window.
+    var onOpenPreferences: (() -> Void)?
+
+    /// Callback to open the About window.
+    var onOpenAbout: (() -> Void)?
+
     var body: some View {
         VStack(spacing: 0) {
 
@@ -47,9 +53,33 @@ struct PopoverView: View {
             Divider()
                 .padding(.horizontal, 12)
 
-            // ── Quit ─────────────────────────────────────────────────
-            HStack {
+            // ── Footer: Preferences, About & Quit ─────────────────
+            HStack(spacing: 12) {
+                Button {
+                    onOpenPreferences?()
+                } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: "gear")
+                        Text("Preferences…")
+                    }
+                }
+                .buttonStyle(.plain)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .padding(.leading, 16)
+
+                Button {
+                    onOpenAbout?()
+                } label: {
+                    Image(systemName: "info.circle")
+                }
+                .buttonStyle(.plain)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .help("About OpenClaw Toggle")
+
                 Spacer()
+
                 Button("Quit") {
                     NSApplication.shared.terminate(nil)
                 }
@@ -57,8 +87,8 @@ struct PopoverView: View {
                 .font(.caption)
                 .foregroundStyle(.tertiary)
                 .padding(.trailing, 16)
-                .padding(.vertical, 10)
             }
+            .padding(.vertical, 10)
         }
         .frame(width: 280)
     }
@@ -130,6 +160,3 @@ struct PopoverView: View {
         .padding(.vertical, 10)
     }
 }
-
-// (AvatarRingView and AlfredAvatarImage removed – icon is shown only in the
-// menu bar status item; the dropdown displays text-only controls.)

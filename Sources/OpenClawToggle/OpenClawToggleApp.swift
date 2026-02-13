@@ -20,6 +20,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     private var statusItem: NSStatusItem!
     private let monitor = StatusMonitor()
+    private let settings = AppSettings.shared
     private var cancellables = Set<AnyCancellable>()
 
     /// The menu shown when the status item is clicked.
@@ -27,6 +28,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     /// The hosting view inside the custom menu item.
     private var hostingView: NSHostingView<PopoverView>?
+
+    /// Standalone Preferences window (created on demand).
+    private var preferencesWindow: NSWindow?
+
+    /// About window (created on demand).
+    private var aboutWindow: NSWindow?
 
     // MARK: NSApplicationDelegate
 
@@ -38,6 +45,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         ProcessInfo.processInfo.disableAutomaticTermination("Menu bar app must stay alive")
         ProcessInfo.processInfo.disableSuddenTermination()
 
+        // ── First-run: auto-detect services ───────────────────────────
+        if !settings.hasCompletedSetup {
+            let count = ServiceDetector.detectAndApply(to: settings)
+            if count == 0 {
+                // No services found — show Preferences so user can configure.
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { [weak self] in
+                    self?.openPreferences()
+                }
+            }
+        }
+
         // ── Status bar item ───────────────────────────────────────────
         statusItem = NSStatusBar.system.statusItem(
             withLength: NSStatusItem.variableLength
@@ -48,7 +66,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
 
         // ── Menu with custom view ─────────────────────────────────────
-        let contentView = PopoverView(monitor: monitor)
+        let contentView = PopoverView(
+            monitor: monitor,
+            onOpenPreferences: { [weak self] in
+                self?.openPreferences()
+            },
+            onOpenAbout: { [weak self] in
+                self?.openAbout()
+            }
+        )
         let hostingView = NSHostingView(rootView: contentView)
         // Let the hosting view determine its ideal size.
         hostingView.setFrameSize(hostingView.fittingSize)
@@ -81,7 +107,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         // We return .terminateLater and call reply(.terminateNow) once
         // the bootout commands have finished.
         let uid = String(getuid())
-        let labels = ["ai.openclaw.ssh-tunnel", "ai.openclaw.node"]
+        let tunnelLabel = settings.tunnelServiceLabel
+        let nodeLabel   = settings.nodeServiceLabel
+        let labels = [tunnelLabel, nodeLabel]
 
         Task.detached(priority: .userInitiated) {
             for label in labels {
@@ -115,11 +143,92 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         hostingView?.setFrameSize(hostingView?.fittingSize ?? .zero)
     }
 
+    // MARK: Preferences Window
+
+    func openPreferences() {
+        // Close the menu if it's open.
+        menu.cancelTracking()
+
+        if let existing = preferencesWindow, existing.isVisible {
+            existing.makeKeyAndOrderFront(nil)
+            NSApp.activate(ignoringOtherApps: true)
+            return
+        }
+
+        let prefsView = PreferencesView(settings: settings)
+        let hostingController = NSHostingController(rootView: prefsView)
+        let window = NSWindow(contentViewController: hostingController)
+        window.title = "OpenClaw Toggle — Preferences"
+        window.styleMask = [.titled, .closable]
+        window.center()
+        window.isReleasedWhenClosed = false
+        window.makeKeyAndOrderFront(nil)
+
+        // Temporarily become a regular app so the Preferences window can
+        // receive focus and appear in the app switcher.
+        NSApp.setActivationPolicy(.regular)
+        NSApp.activate(ignoringOtherApps: true)
+
+        preferencesWindow = window
+
+        // When the window closes, go back to accessory (no Dock icon).
+        NotificationCenter.default.addObserver(
+            forName: NSWindow.willCloseNotification,
+            object: window,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor in
+                self?.preferencesWindow = nil
+                NSApp.setActivationPolicy(.accessory)
+            }
+        }
+    }
+
     // MARK: Icon update
 
     private func updateIcon(for state: ConnectionState) {
         statusItem.button?.image = MenuBarIcon.create(for: state)
         statusItem.button?.image?.isTemplate = false
+    }
+
+    // MARK: About Window
+
+    func openAbout() {
+        menu.cancelTracking()
+
+        if let existing = aboutWindow, existing.isVisible {
+            existing.makeKeyAndOrderFront(nil)
+            NSApp.activate(ignoringOtherApps: true)
+            return
+        }
+
+        let aboutView = AboutView()
+        let hostingController = NSHostingController(rootView: aboutView)
+        let window = NSWindow(contentViewController: hostingController)
+        window.title = "About OpenClaw Toggle"
+        window.styleMask = [.titled, .closable]
+        window.center()
+        window.isReleasedWhenClosed = false
+        window.makeKeyAndOrderFront(nil)
+
+        NSApp.setActivationPolicy(.regular)
+        NSApp.activate(ignoringOtherApps: true)
+
+        aboutWindow = window
+
+        NotificationCenter.default.addObserver(
+            forName: NSWindow.willCloseNotification,
+            object: window,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor in
+                self?.aboutWindow = nil
+                // Only revert to accessory if preferences window is also closed
+                if self?.preferencesWindow?.isVisible != true {
+                    NSApp.setActivationPolicy(.accessory)
+                }
+            }
+        }
     }
 }
 

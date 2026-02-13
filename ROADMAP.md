@@ -14,10 +14,9 @@
 - [x] **Preferences panel** — configurable port, service labels, plist paths
 - [x] **Auto-detect** — scan for existing OpenClaw launchd services
 - [x] **Proper .app bundle** — with icon, versioning, About window, build-app.sh script
-- [ ] **DMG installer** — drag-to-Applications distribution
-- [ ] **Code signing + notarization** — Apple Developer certificate
+- [x] **Homebrew formula** — `brew tap aariya50/tap && brew install openclaw-toggle`
+- [x] **GitHub Release** — v1.0.0 with zipped .app bundle
 - [x] **README** — installation guide, screenshots, requirements
-- [ ] **Homebrew cask** — `brew install --cask openclaw-toggle`
 - [ ] **Launch at login** — optional auto-start on login
 - [ ] **Menu bar icon options** — choice of icon style
 

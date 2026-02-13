@@ -52,33 +52,48 @@ Status is polled every 3 seconds (configurable in Preferences).
 
 ## Installation
 
-### Option A: Pre-built .app (recommended)
-
-1. Download `OpenClawToggle.app` from the [Releases](https://github.com/AriGlockworx/OpenClawToggle/releases) page
-2. Move it to `/Applications/`
-3. Open it — it appears in your menu bar (no Dock icon)
-
-### Option B: Build from source
+### Option A: Homebrew (recommended)
 
 ```bash
-# Clone the repo
-git clone https://github.com/AriGlockworx/OpenClawToggle.git
-cd OpenClawToggle
+brew tap aariya50/tap
+brew install openclaw-toggle
+```
 
-# Build the .app bundle (debug)
-./build-app.sh
+Then launch:
 
-# Or build a release version
+```bash
+open $(brew --prefix)/Cellar/openclaw-toggle/1.0.0/OpenClawToggle.app
+```
+
+Optionally symlink to `/Applications/`:
+
+```bash
+ln -sf $(brew --prefix)/Cellar/openclaw-toggle/1.0.0/OpenClawToggle.app /Applications/OpenClawToggle.app
+```
+
+### Option B: Download from GitHub Releases
+
+1. Download `OpenClawToggle.app.zip` from the [Releases](https://github.com/aariya50/openclaw-toggle/releases) page
+2. Unzip and move `OpenClawToggle.app` to `/Applications/`
+3. Right-click → Open → Open (to bypass Gatekeeper on first launch)
+
+### Option C: Build from source
+
+```bash
+git clone https://github.com/aariya50/openclaw-toggle.git
+cd openclaw-toggle
+
+# Build the .app bundle (release)
 ./build-app.sh release
 
 # Run it
 open build/OpenClawToggle.app
 
-# Install to Applications
+# Or install to Applications
 cp -r build/OpenClawToggle.app /Applications/
 ```
 
-### Option C: Run without bundling
+### Option D: Run without bundling
 
 ```bash
 swift build

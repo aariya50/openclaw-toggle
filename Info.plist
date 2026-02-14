@@ -2,37 +2,43 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-    <key>CFBundleName</key>
-    <string>OpenClaw Toggle</string>
-    <key>CFBundleDisplayName</key>
-    <string>OpenClaw Toggle</string>
-    <key>CFBundleIdentifier</key>
-    <string>ai.openclaw.toggle</string>
-    <key>CFBundleVersion</key>
-    <string>4</string>
-    <key>CFBundleShortVersionString</key>
-    <string>3.0.0</string>
-    <key>CFBundlePackageType</key>
-    <string>APPL</string>
-    <key>CFBundleExecutable</key>
-    <string>OpenClawToggle</string>
-    <key>CFBundleIconFile</key>
-    <string>AppIcon</string>
-    <key>LSUIElement</key>
-    <true/>
-    <key>LSMinimumSystemVersion</key>
-    <string>14.0</string>
-    <key>NSSupportsAutomaticTermination</key>
-    <false/>
-    <key>NSSuddenTerminationOK</key>
-    <false/>
-    <key>NSHumanReadableCopyright</key>
-    <string>Copyright © 2026 OpenClaw Contributors. MIT License.</string>
-    <key>SUFeedURL</key>
-    <string>https://github.com/aariya50/openclaw-toggle/releases/latest/download/appcast.xml</string>
-    <key>SUPublicEDKey</key>
-    <string></string>
-    <key>SUAutomaticallyUpdate</key>
-    <true/>
+	<key>CFBundleDisplayName</key>
+	<string>OpenClaw Toggle</string>
+	<key>CFBundleExecutable</key>
+	<string>OpenClawToggle</string>
+	<key>CFBundleIconFile</key>
+	<string>AppIcon</string>
+	<key>CFBundleIdentifier</key>
+	<string>ai.openclaw.toggle</string>
+	<key>CFBundleName</key>
+	<string>OpenClaw Toggle</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+	<key>CFBundleShortVersionString</key>
+	<string>3.0.0</string>
+	<key>CFBundleVersion</key>
+	<string>4</string>
+	<key>LSMinimumSystemVersion</key>
+	<string>14.0</string>
+	<key>LSUIElement</key>
+	<true/>
+	<key>NSHumanReadableCopyright</key>
+	<string>Copyright © 2026 OpenClaw Contributors. MIT License.</string>
+	<key>NSSuddenTerminationOK</key>
+	<false/>
+	<key>NSSupportsAutomaticTermination</key>
+	<false/>
+	<key>SUAutomaticallyUpdate</key>
+	<true/>
+	<key>SUEnableAutomaticChecks</key>
+	<false/>
+	<key>SUFeedURL</key>
+	<string>https://github.com/aariya50/openclaw-toggle/releases/latest/download/appcast.xml</string>
+	<key>SUPublicEDKey</key>
+	<string></string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>OpenClaw Toggle uses the microphone for voice commands to control services.</string>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>OpenClaw Toggle uses on-device speech recognition to detect the wake word.</string>
 </dict>
 </plist>

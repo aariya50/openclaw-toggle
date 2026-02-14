@@ -6,6 +6,7 @@
 
 import AppKit
 import Combine
+import HotKey
 import SwiftUI
 
 // ---------------------------------------------------------------------------
@@ -30,6 +31,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     /// Connection drop notifier — posts macOS notifications on state changes.
     private lazy var notifier = ConnectionNotifier()
 
+    /// Voice assistant — push-to-talk + OpenAI pipeline.
+    private lazy var voiceAssistant = VoiceAssistant(monitor: monitor, settings: settings)
+
+    /// Floating overlay that shows voice assistant state (recording, transcribing, etc.).
+    private lazy var voiceOverlay = VoiceOverlayController()
+
+    /// Global hotkey for push-to-talk (Shift + Delete) — uses Carbon API, no permissions needed.
+    private var pushToTalkHotKey: HotKey?
+
     /// The menu shown when the status item is clicked.
     private let menu = NSMenu()
 
@@ -46,7 +56,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var wizardWindow: NSWindow?
 
     /// Logs window (created on demand).
-    private var logsWindow: NSWindow?
 
     // MARK: NSApplicationDelegate
 
@@ -86,14 +95,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let contentView = PopoverView(
             monitor: monitor,
             updater: updater,
+            voiceEnabled: settings.voiceEnabled,
             onOpenPreferences: { [weak self] in
                 self?.scheduleOpenPreferences()
             },
             onOpenAbout: { [weak self] in
                 self?.scheduleOpenAbout()
-            },
-            onOpenLogs: { [weak self] in
-                self?.scheduleOpenLogs()
             }
         )
         let hostingView = NSHostingView(rootView: contentView)
@@ -124,12 +131,45 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
         // ── Bootstrap services & install crash watchdog ───────────────
         lifecycle.start()
+
+        // ── Voice assistant ──────────────────────────────────────────
+        if settings.voiceEnabled {
+            Task { await voiceAssistant.start() }
+            voiceOverlay.start(assistant: voiceAssistant)
+        }
+
+        // ── Global hotkey: Shift + Delete → push-to-talk ───────────
+        installPushToTalkHotkey()
+
+        // ── Debug: listen for distributed notifications ──────────────
+        #if DEBUG
+        DistributedNotificationCenter.default().addObserver(
+            forName: Notification.Name("ai.openclaw.toggle.openPreferences"),
+            object: nil, queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor in
+                self?.openPreferences()
+            }
+        }
+
+        DistributedNotificationCenter.default().addObserver(
+            forName: Notification.Name("ai.openclaw.toggle.captureWindows"),
+            object: nil, queue: .main
+        ) { _ in
+            Task { @MainActor in
+                DebugCapture.captureAllWindows()
+            }
+        }
+        #endif
     }
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
         // Stop polling immediately so no new refresh cycles interfere.
         monitor.stopPolling()
         notifier.stop()
+        voiceOverlay.stop()
+        voiceAssistant.stop()
+        pushToTalkHotKey = nil
 
         // Delegate all teardown (bootout services, remove PID file,
         // unload watchdog) to the lifecycle manager.
@@ -166,6 +206,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         appMenuItem.submenu = appMenu
         mainMenu.addItem(appMenuItem)
 
+        // Edit menu (⌘X, ⌘C, ⌘V, ⌘A, ⌘Z)
+        let editMenuItem = NSMenuItem()
+        let editMenu = NSMenu(title: "Edit")
+        editMenu.addItem(NSMenuItem(title: "Undo", action: Selector(("undo:")), keyEquivalent: "z"))
+        editMenu.addItem(NSMenuItem(title: "Redo", action: Selector(("redo:")), keyEquivalent: "Z"))
+        editMenu.addItem(.separator())
+        editMenu.addItem(NSMenuItem(title: "Cut", action: #selector(NSText.cut(_:)), keyEquivalent: "x"))
+        editMenu.addItem(NSMenuItem(title: "Copy", action: #selector(NSText.copy(_:)), keyEquivalent: "c"))
+        editMenu.addItem(NSMenuItem(title: "Paste", action: #selector(NSText.paste(_:)), keyEquivalent: "v"))
+        editMenu.addItem(NSMenuItem(title: "Select All", action: #selector(NSText.selectAll(_:)), keyEquivalent: "a"))
+        editMenuItem.submenu = editMenu
+        mainMenu.addItem(editMenuItem)
+
         // File menu with Close (Cmd+W)
         let fileMenuItem = NSMenuItem()
         let fileMenu = NSMenu(title: "File")
@@ -179,6 +232,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         mainMenu.addItem(fileMenuItem)
 
         NSApp.mainMenu = mainMenu
+    }
+
+    // MARK: Push-to-Talk Hotkey
+
+    /// Installs global push-to-talk hotkey: Shift + Delete.
+    /// Uses Carbon RegisterEventHotKey via HotKey library — no permissions needed.
+    /// Hold to record, release to send. Press while speaking to cancel.
+    private func installPushToTalkHotkey() {
+        let hotKey = HotKey(key: .delete, modifiers: [.shift])
+        hotKey.keyDownHandler = { [weak self] in
+            Task { @MainActor in self?.voiceAssistant.startRecording() }
+        }
+        hotKey.keyUpHandler = { [weak self] in
+            Task { @MainActor in self?.voiceAssistant.stopRecordingKey() }
+        }
+        pushToTalkHotKey = hotKey
     }
 
     // MARK: NSMenuDelegate
@@ -209,13 +278,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
     }
 
-    /// Schedule opening Logs after the menu finishes closing.
-    private func scheduleOpenLogs() {
-        menu.cancelTracking()
-        DispatchQueue.main.async { [weak self] in
-            self?.openLogs()
-        }
-    }
 
     // MARK: Setup Wizard
 
@@ -272,7 +334,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             return
         }
 
-        let prefsView = PreferencesView(settings: settings, updater: updater)
+        let prefsView = PreferencesView(
+            settings: settings,
+            updater: updater,
+            onApplyVoiceSettings: { [weak self] in
+                guard let self else { return }
+                if self.settings.voiceEnabled {
+                    Task { await self.voiceAssistant.restart() }
+                    self.voiceOverlay.start(assistant: self.voiceAssistant)
+                } else {
+                    self.voiceOverlay.stop()
+                    self.voiceAssistant.stop()
+                }
+            }
+        )
         let hostingController = NSHostingController(rootView: prefsView)
         let window = NSWindow(contentViewController: hostingController)
         window.title = "OpenClaw Toggle — Preferences"
@@ -314,44 +389,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     // MARK: Logs Window
 
-    func openLogs() {
-        if let existing = logsWindow, existing.isVisible {
-            existing.makeKeyAndOrderFront(nil)
-            NSApp.activate(ignoringOtherApps: true)
-            return
-        }
-
-        let logsView = LogsViewer()
-        let hostingController = NSHostingController(rootView: logsView)
-        let window = NSWindow(contentViewController: hostingController)
-        window.title = "OpenClaw Toggle — Logs"
-        window.styleMask = [.titled, .closable, .resizable]
-        window.setContentSize(NSSize(width: 520, height: 360))
-        window.center()
-        window.isReleasedWhenClosed = false
-        window.makeKeyAndOrderFront(nil)
-
-        NSApp.setActivationPolicy(.regular)
-        NSApp.activate(ignoringOtherApps: true)
-
-        logsWindow = window
-
-        NotificationCenter.default.addObserver(
-            forName: NSWindow.willCloseNotification,
-            object: window,
-            queue: .main
-        ) { [weak self] _ in
-            guard let strongSelf = self else { return }
-            Task { @MainActor in
-                strongSelf.logsWindow = nil
-                if strongSelf.preferencesWindow?.isVisible != true
-                    && strongSelf.aboutWindow?.isVisible != true
-                    && strongSelf.wizardWindow?.isVisible != true {
-                    NSApp.setActivationPolicy(.accessory)
-                }
-            }
-        }
-    }
 
     // MARK: About Window
 
@@ -499,3 +536,31 @@ struct OpenClawToggleEntry {
         app.run()
     }
 }
+
+// ---------------------------------------------------------------------------
+// MARK: - Debug Window Capture
+// ---------------------------------------------------------------------------
+
+#if DEBUG
+/// Captures all app windows to /tmp for visual debugging.
+@MainActor
+enum DebugCapture {
+    static func captureAllWindows() {
+        for window in NSApp.windows where window.isVisible {
+            let title = window.title.isEmpty ? "untitled" : window.title
+                .replacingOccurrences(of: " ", with: "-")
+                .lowercased()
+            guard let view = window.contentView else { continue }
+
+            let bitmapRep = view.bitmapImageRepForCachingDisplay(in: view.bounds)
+            guard let rep = bitmapRep else { continue }
+            view.cacheDisplay(in: view.bounds, to: rep)
+
+            guard let png = rep.representation(using: .png, properties: [:]) else { continue }
+            let path = "/tmp/openclaw-\(title).png"
+            try? png.write(to: URL(fileURLWithPath: path))
+            print("[DebugCapture] Saved \(path) (\(rep.pixelsWide)x\(rep.pixelsHigh))")
+        }
+    }
+}
+#endif

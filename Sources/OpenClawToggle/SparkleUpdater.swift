@@ -33,17 +33,14 @@ final class SparkleUpdaterManager: ObservableObject {
     init() {
         // Create the controller with no delegate — uses defaults
         // from Info.plist (SUFeedURL, etc.).
+        // Don't start the updater automatically — the EdDSA public key
+        // is not yet configured, so Sparkle would log a fatal error.
+        // Update checks are handled via the GitHub Releases API instead.
         controller = SPUStandardUpdaterController(
-            startingUpdater: true,
+            startingUpdater: false,
             updaterDelegate: nil,
             userDriverDelegate: nil
         )
-
-        // Enable automatic downloading and installing of updates.
-        // Combined with SUAutomaticallyUpdate=YES in Info.plist,
-        // Sparkle will quit → replace → relaunch automatically.
-        controller.updater.automaticallyChecksForUpdates = true
-        controller.updater.automaticallyDownloadsUpdates = true
 
         // Observe the updater's `canCheckForUpdates` property via KVO
         // and bridge it to our @Published property.

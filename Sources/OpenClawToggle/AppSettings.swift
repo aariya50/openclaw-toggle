@@ -26,6 +26,11 @@ final class AppSettings: ObservableObject {
         case hasCompletedSetup   = "hasCompletedSetup"
         case gatewayHost         = "gatewayHost"
         case launchAtLogin       = "launchAtLogin"
+        case menuBarIconName     = "menuBarIconName"
+        case voiceEnabled        = "voiceEnabled"
+        case wakeWord            = "wakeWord"
+        case openAIModel         = "openAIModel"
+        case openAIAPIKey        = "openAIAPIKey"
     }
 
     // MARK: - Defaults
@@ -35,6 +40,11 @@ final class AppSettings: ObservableObject {
     private static let defaultTunnelLabel: String       = "ai.openclaw.ssh-tunnel"
     private static let defaultPollInterval: TimeInterval = 3
     private static let defaultGatewayHost: String       = ""
+    static let defaultMenuBarIconName: String            = "circle.hexagongrid.fill"
+    private static let defaultVoiceEnabled: Bool          = false
+    private static let defaultWakeWord: String            = "hey alfred"
+    private static let defaultOpenAIModel: String         = "gpt-4o-mini"
+    private static let defaultOpenAIAPIKey: String        = ""
 
     private static var defaultNodePlistPath: String {
         NSHomeDirectory() + "/Library/LaunchAgents/\(defaultNodeLabel).plist"
@@ -93,6 +103,31 @@ final class AppSettings: ObservableObject {
         }
     }
 
+    /// SF Symbol name used for the menu bar icon overlay.
+    @Published var menuBarIconName: String {
+        didSet { save(.menuBarIconName, value: menuBarIconName) }
+    }
+
+    /// Whether voice assistant is enabled.
+    @Published var voiceEnabled: Bool {
+        didSet { save(.voiceEnabled, value: voiceEnabled) }
+    }
+
+    /// Wake word phrase for always-listening mode.
+    @Published var wakeWord: String {
+        didSet { save(.wakeWord, value: wakeWord) }
+    }
+
+    /// OpenAI model for command interpretation.
+    @Published var openAIModel: String {
+        didSet { save(.openAIModel, value: openAIModel) }
+    }
+
+    /// OpenAI API key.
+    @Published var openAIAPIKey: String {
+        didSet { save(.openAIAPIKey, value: openAIAPIKey) }
+    }
+
     // MARK: - Init
 
     private init() {
@@ -122,6 +157,20 @@ final class AppSettings: ObservableObject {
             ?? Self.defaultGatewayHost
 
         self.launchAtLogin = d.bool(forKey: Key.launchAtLogin.rawValue)
+
+        self.menuBarIconName = d.string(forKey: Key.menuBarIconName.rawValue)
+            ?? Self.defaultMenuBarIconName
+
+        self.voiceEnabled = d.bool(forKey: Key.voiceEnabled.rawValue)
+
+        self.wakeWord = d.string(forKey: Key.wakeWord.rawValue)
+            ?? Self.defaultWakeWord
+
+        self.openAIModel = d.string(forKey: Key.openAIModel.rawValue)
+            ?? Self.defaultOpenAIModel
+
+        self.openAIAPIKey = d.string(forKey: Key.openAIAPIKey.rawValue)
+            ?? Self.defaultOpenAIAPIKey
     }
 
     // MARK: - Reset
@@ -135,6 +184,7 @@ final class AppSettings: ObservableObject {
         tunnelPlistPath     = Self.defaultTunnelPlistPath
         pollInterval        = Self.defaultPollInterval
         gatewayHost         = Self.defaultGatewayHost
+        menuBarIconName     = Self.defaultMenuBarIconName
     }
 
     // MARK: - Launch at Login

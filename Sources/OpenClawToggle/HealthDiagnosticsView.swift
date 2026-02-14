@@ -106,6 +106,11 @@ final class DiagnosticsEngine: ObservableObject {
             ))
         }
 
+        // 7. Check OpenAI API key
+        if settings.voiceEnabled {
+            checks.append(checkAPIKey())
+        }
+
         isRunning = false
     }
 
@@ -205,6 +210,23 @@ final class DiagnosticsEngine: ObservableObject {
         return DiagnosticCheck(
             name: name,
             detail: "Cannot reach \(host)",
+            status: .fail
+        )
+    }
+
+    private func checkAPIKey() -> DiagnosticCheck {
+        let key = settings.openAIAPIKey
+        if !key.isEmpty {
+            let masked = String(key.prefix(7)) + "..." + String(key.suffix(4))
+            return DiagnosticCheck(
+                name: "OpenAI API Key",
+                detail: "Key set (\(masked))",
+                status: .pass
+            )
+        }
+        return DiagnosticCheck(
+            name: "OpenAI API Key",
+            detail: "No API key configured — voice commands won't work",
             status: .fail
         )
     }

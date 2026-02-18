@@ -28,8 +28,6 @@ final class AppSettings: ObservableObject {
         case launchAtLogin       = "launchAtLogin"
         case menuBarIconName     = "menuBarIconName"
         case voiceEnabled        = "voiceEnabled"
-        case wakeWord            = "wakeWord"
-        case openAIModel         = "openAIModel"
         case openAIAPIKey        = "openAIAPIKey"
     }
 
@@ -42,8 +40,6 @@ final class AppSettings: ObservableObject {
     private static let defaultGatewayHost: String       = ""
     static let defaultMenuBarIconName: String            = "circle.hexagongrid.fill"
     private static let defaultVoiceEnabled: Bool          = false
-    private static let defaultWakeWord: String            = "hey alfred"
-    private static let defaultOpenAIModel: String         = "gpt-4o-mini"
     private static let defaultOpenAIAPIKey: String        = ""
 
     private static var defaultNodePlistPath: String {
@@ -113,17 +109,7 @@ final class AppSettings: ObservableObject {
         didSet { save(.voiceEnabled, value: voiceEnabled) }
     }
 
-    /// Wake word phrase for always-listening mode.
-    @Published var wakeWord: String {
-        didSet { save(.wakeWord, value: wakeWord) }
-    }
-
-    /// OpenAI model for command interpretation.
-    @Published var openAIModel: String {
-        didSet { save(.openAIModel, value: openAIModel) }
-    }
-
-    /// OpenAI API key.
+    /// OpenAI API key (used for Whisper transcription and TTS).
     @Published var openAIAPIKey: String {
         didSet { save(.openAIAPIKey, value: openAIAPIKey) }
     }
@@ -162,12 +148,6 @@ final class AppSettings: ObservableObject {
             ?? Self.defaultMenuBarIconName
 
         self.voiceEnabled = d.bool(forKey: Key.voiceEnabled.rawValue)
-
-        self.wakeWord = d.string(forKey: Key.wakeWord.rawValue)
-            ?? Self.defaultWakeWord
-
-        self.openAIModel = d.string(forKey: Key.openAIModel.rawValue)
-            ?? Self.defaultOpenAIModel
 
         self.openAIAPIKey = d.string(forKey: Key.openAIAPIKey.rawValue)
             ?? Self.defaultOpenAIAPIKey

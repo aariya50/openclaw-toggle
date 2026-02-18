@@ -46,25 +46,14 @@ struct VoiceOverlayView: View {
             ProgressView()
                 .controlSize(.small)
 
-        case .interpreting:
-            Image(systemName: "brain")
-                .font(.system(size: 12))
-                .foregroundStyle(.orange)
-
         case .executing:
-            Image(systemName: "bolt.fill")
-                .font(.system(size: 12))
-                .foregroundStyle(.yellow)
+            ProgressView()
+                .controlSize(.small)
 
         case .speaking:
             Image(systemName: "speaker.wave.2.fill")
                 .font(.system(size: 12))
                 .foregroundStyle(.green)
-
-        case .conversing:
-            Image(systemName: "ear")
-                .font(.system(size: 12))
-                .foregroundStyle(.blue)
 
         default:
             EmptyView()
@@ -77,10 +66,8 @@ struct VoiceOverlayView: View {
         switch assistant.state {
         case .recording:     return "Listening…"
         case .transcribing:  return "Transcribing…"
-        case .interpreting:  return "Thinking…"
-        case .executing:     return "Running…"
+        case .executing:     return "Sending…"
         case .speaking:      return assistant.lastResponse.prefix(40) + (assistant.lastResponse.count > 40 ? "…" : "")
-        case .conversing:    return "Listening…"
         default:             return ""
         }
     }
@@ -113,7 +100,7 @@ final class VoiceOverlayController {
 
     /// States that should show the overlay.
     private static let visibleStates: Set<VoiceAssistant.State.RawValue> = [
-        "recording", "transcribing", "interpreting", "executing", "speaking", "conversing",
+        "recording", "transcribing", "executing", "speaking",
     ]
 
     func start(assistant: VoiceAssistant) {

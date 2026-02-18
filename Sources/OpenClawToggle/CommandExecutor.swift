@@ -7,16 +7,10 @@ import os
 
 private let ttsLog = Logger(subsystem: "ai.openclaw.toggle", category: "tts")
 
-/// Maps CommandInterpreter.Intent to actual app actions and provides TTS feedback.
+/// Provides TTS (text-to-speech) feedback for the voice assistant pipeline.
 @MainActor
 final class CommandExecutor: NSObject, ObservableObject, AVAudioPlayerDelegate {
 
-    struct Result {
-        let success: Bool
-        let spokenResponse: String
-    }
-
-    private let monitor: StatusMonitor
     private let settings: AppSettings
 
     /// AVAudioPlayer for OpenAI TTS playback (must be retained).
@@ -28,72 +22,9 @@ final class CommandExecutor: NSObject, ObservableObject, AVAudioPlayerDelegate {
     /// Fallback synthesizer for when OpenAI TTS is unavailable.
     private let fallbackSynthesizer = AVSpeechSynthesizer()
 
-    init(monitor: StatusMonitor, settings: AppSettings) {
-        self.monitor = monitor
+    init(settings: AppSettings) {
         self.settings = settings
         super.init()
-    }
-
-    /// Execute an intent and return a spoken response.
-    func execute(_ intent: CommandInterpreter.Intent) async -> Result {
-        switch intent {
-        case .startTunnel:
-            if monitor.tunnelActive {
-                return Result(success: true, spokenResponse: "The tunnel is already running.")
-            }
-            await monitor.toggleTunnel()
-            return Result(success: true, spokenResponse: "Starting the SSH tunnel.")
-
-        case .stopTunnel:
-            if !monitor.tunnelActive {
-                return Result(success: true, spokenResponse: "The tunnel is already stopped.")
-            }
-            await monitor.toggleTunnel()
-            return Result(success: true, spokenResponse: "Stopping the SSH tunnel.")
-
-        case .startNode:
-            if monitor.nodeRunning {
-                return Result(success: true, spokenResponse: "The node service is already running.")
-            }
-            if !monitor.tunnelActive {
-                return Result(success: false, spokenResponse: "Can't start the node. The tunnel needs to be running first.")
-            }
-            await monitor.toggleNode()
-            return Result(success: true, spokenResponse: "Starting the node service.")
-
-        case .stopNode:
-            if !monitor.nodeRunning {
-                return Result(success: true, spokenResponse: "The node service is already stopped.")
-            }
-            await monitor.toggleNode()
-            return Result(success: true, spokenResponse: "Stopping the node service.")
-
-        case .restartTunnel:
-            await monitor.restartTunnel()
-            return Result(success: true, spokenResponse: "Restarting the SSH tunnel.")
-
-        case .restartNode:
-            await monitor.restartNode()
-            return Result(success: true, spokenResponse: "Restarting the node service.")
-
-        case .getStatus:
-            let tunnel = monitor.tunnelActive ? "running" : "stopped"
-            let node = monitor.nodeRunning ? "running" : "stopped"
-            return Result(success: true, spokenResponse: "Tunnel is \(tunnel). Node is \(node).")
-
-        case .runDiagnostics:
-            let engine = DiagnosticsEngine(settings: settings)
-            await engine.runAll()
-            let passed = engine.checks.filter { $0.status == .pass }.count
-            let total = engine.checks.count
-            return Result(success: true, spokenResponse: "\(passed) of \(total) checks passed.")
-
-        case .chat(let response):
-            return Result(success: true, spokenResponse: response)
-
-        case .unknown:
-            return Result(success: false, spokenResponse: "Sorry, I didn't understand that.")
-        }
     }
 
     /// Stop any active TTS playback immediately.
@@ -108,7 +39,7 @@ final class CommandExecutor: NSObject, ObservableObject, AVAudioPlayerDelegate {
 
     // MARK: - Text-to-Speech
 
-    /// Speak text aloud using OpenAI TTS API (British "fable" voice for Alfred feel).
+    /// Speak text aloud using OpenAI TTS API ("echo" voice).
     /// Falls back to macOS AVSpeechSynthesizer if the API call fails.
     func speak(_ text: String) {
         Task {
@@ -120,6 +51,8 @@ final class CommandExecutor: NSObject, ObservableObject, AVAudioPlayerDelegate {
     /// **Waits for playback to complete** before returning, so the caller knows
     /// when it's safe to start recording again.
     func speakAsync(_ text: String) async {
+        // OpenAI TTS has a 4096-char limit; truncate at a sentence boundary.
+        let text = Self.truncateForTTS(text, maxLength: 4000)
         let apiKey = settings.openAIAPIKey
         guard !apiKey.isEmpty else {
             ttsLog.info("No API key — using fallback TTS")
@@ -137,7 +70,7 @@ final class CommandExecutor: NSObject, ObservableObject, AVAudioPlayerDelegate {
         }
     }
 
-    /// Call OpenAI TTS API with the "fable" voice (British, sophisticated).
+    /// Call OpenAI TTS API with the "echo" voice.
     private func openAITTS(text: String, apiKey: String) async throws -> Data {
         let url = URL(string: "https://api.openai.com/v1/audio/speech")!
         var request = URLRequest(url: url)
@@ -147,9 +80,9 @@ final class CommandExecutor: NSObject, ObservableObject, AVAudioPlayerDelegate {
         request.timeoutInterval = 15
 
         let payload: [String: Any] = [
-            "model": "tts-1",
+            "model": "tts-1-hd",
             "input": text,
-            "voice": "fable",           // British-accented, warm — perfect for a butler
+            "voice": "echo",            // Smooth, clear male
             "response_format": "mp3",
             "speed": 1.0,
         ]
@@ -231,6 +164,19 @@ final class CommandExecutor: NSObject, ObservableObject, AVAudioPlayerDelegate {
         let estimatedDuration = Double(wordCount) * 0.15 + 0.5
         ttsLog.info("Fallback TTS: ~\(estimatedDuration, privacy: .public)s estimated for \(wordCount, privacy: .public) words")
         try? await Task.sleep(for: .seconds(estimatedDuration))
+    }
+
+    // MARK: - Helpers
+
+    /// Truncate text to fit TTS limits, cutting at the last sentence boundary.
+    private static func truncateForTTS(_ text: String, maxLength: Int) -> String {
+        guard text.count > maxLength else { return text }
+        let truncated = String(text.prefix(maxLength))
+        // Try to cut at the last sentence-ending punctuation.
+        if let range = truncated.range(of: #"[.!?]"#, options: [.regularExpression, .backwards]) {
+            return String(truncated[...range.lowerBound])
+        }
+        return truncated + "..."
     }
 
     // MARK: - Errors

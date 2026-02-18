@@ -10,6 +10,81 @@ import HotKey
 import SwiftUI
 
 // ---------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
+// MARK: - Chat Window Controller
+// ---------------------------------------------------------------------------
+
+/// Manages the standalone chat window.
+@MainActor
+final class ChatWindowController {
+    private var window: NSWindow?
+    private let assistant: VoiceAssistant
+    
+    init(assistant: VoiceAssistant) {
+        self.assistant = assistant
+    }
+    
+    func toggle() {
+        if let existing = window, existing.isVisible {
+            existing.close()
+        } else {
+            show()
+        }
+    }
+    
+    func show() {
+        if let existing = window, existing.isVisible {
+            existing.makeKeyAndOrderFront(nil)
+            NSApp.activate(ignoringOtherApps: true)
+            return
+        }
+        
+        let chatView = ChatWindowView(assistant: assistant)
+        let hostingController = NSHostingController(rootView: chatView)
+        let window = NSWindow(contentViewController: hostingController)
+        window.title = "OpenClaw Chat"
+        window.styleMask = [.titled, .closable, .resizable]
+        window.center()
+        window.isReleasedWhenClosed = false
+        window.makeKeyAndOrderFront(nil)
+        
+        // Handle Esc key
+        NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
+            if event.keyCode == 53 && window.isKeyWindow {  // Esc key
+                window.close()
+                return nil
+            }
+            return event
+        }
+        
+        NSApp.setActivationPolicy(.regular)
+        NSApp.activate(ignoringOtherApps: true)
+        
+        self.window = window
+        
+        NotificationCenter.default.addObserver(
+            forName: NSWindow.willCloseNotification,
+            object: window,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor in
+                self?.window = nil
+                // Check if any other windows are open
+                let hasOtherWindows = NSApp.windows.contains { w in
+                    w.isVisible && w.title.contains("OpenClaw") && w != window
+                }
+                if !hasOtherWindows {
+                    NSApp.setActivationPolicy(.accessory)
+                }
+            }
+        }
+    }
+    
+    func hide() {
+        window?.close()
+    }
+}
+
 // MARK: - App Delegate
 // ---------------------------------------------------------------------------
 
@@ -39,6 +114,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     /// Global hotkey for push-to-talk (Shift + Delete) — uses Carbon API, no permissions needed.
     private var pushToTalkHotKey: HotKey?
+
+    /// Chat window controller for text-based interaction.
+    private var chatWindowController: ChatWindowController?
 
     /// The menu shown when the status item is clicked.
     private let menu = NSMenu()
@@ -139,7 +217,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
 
         // ── Global hotkey: Shift + Delete → push-to-talk ───────────
-        installPushToTalkHotkey()
+        // ── Chat window ──────────────────────────────────────────────
+        chatWindowController = ChatWindowController(assistant: voiceAssistant)
+
+                installPushToTalkHotkey()
 
         // ── Debug: listen for distributed notifications ──────────────
         #if DEBUG
@@ -237,15 +318,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     // MARK: Push-to-Talk Hotkey
 
     /// Installs global push-to-talk hotkey: Shift + Delete.
-    /// Uses Carbon RegisterEventHotKey via HotKey library — no permissions needed.
-    /// Hold to record, release to send. Press while speaking to cancel.
+    /// Hold to record, release to send to agent.
     private func installPushToTalkHotkey() {
         let hotKey = HotKey(key: .delete, modifiers: [.shift])
         hotKey.keyDownHandler = { [weak self] in
-            Task { @MainActor in self?.voiceAssistant.startRecording() }
+            Task { @MainActor in
+                self?.voiceAssistant.startRecording()
+            }
         }
         hotKey.keyUpHandler = { [weak self] in
-            Task { @MainActor in self?.voiceAssistant.stopRecordingKey() }
+            Task { @MainActor in
+                self?.voiceAssistant.stopRecordingKey()
+            }
         }
         pushToTalkHotKey = hotKey
     }

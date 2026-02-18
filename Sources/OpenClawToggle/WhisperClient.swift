@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-// OpenClaw Toggle — Records audio post-wake-word and transcribes via OpenAI Whisper API.
+// OpenClaw Toggle — Records push-to-talk audio and transcribes via OpenAI Whisper API.
 
 import AVFoundation
 import Foundation

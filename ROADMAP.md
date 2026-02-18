@@ -21,13 +21,17 @@
 - ✅ Redesigned Preferences window (clean Form/Section layout, Sparkle-based updates)
 - ✅ Redesigned About window (real app icon, proper layout, corrected links)
 - ✅ Fixed popover refresh button (replaced non-functional spinner)
-- Multi-node support (deferred to v4.0)
-- Global keyboard shortcut (deferred to v4.0)
+- Multi-node support (deferred to v5.0)
+- Global keyboard shortcut (done in v4.0)
 
-## v4.0 — Voice Assistant & Advanced Features
-- Multi-node support (deferred from v3.0)
-- Global keyboard shortcut (deferred from v3.0)
-- Always-on voice listening (hot mic / push-to-talk)
-- Speech-to-text via ElevenLabs API
-- Send transcribed voice to Alfred via OpenClaw node
-- Audio response playback (TTS)
+## v4.0 ✅ — Voice Assistant
+- ✅ Global keyboard shortcut (Shift+Delete push-to-talk)
+- ✅ Push-to-talk voice recording
+- ✅ Speech-to-text via OpenAI Whisper
+- ✅ Send transcribed voice to Alfred via OpenClaw agent CLI
+- ✅ Audio response playback (OpenAI TTS, echo voice)
+- ✅ Chat window (persistent Telegram-style UI)
+- Multi-node support (deferred to v5.0)
+
+## v5.0 — Planned
+- Multi-node support

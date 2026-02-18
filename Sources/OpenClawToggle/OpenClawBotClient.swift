@@ -42,12 +42,12 @@ final class OpenClawBotClient {
 
         let result = await runOpenClawAgent(message: text)
 
-        if let response = result {
+        if let response = result, !Self.isErrorResponse(response) {
             isAvailable = true
             botLog.info("Bot response: '\(response.prefix(200), privacy: .public)'")
             return response
         } else {
-            botLog.error("Bot unavailable — will fall back to GPT")
+            botLog.error("Bot unavailable")
             isAvailable = false
             return nil
         }
@@ -138,54 +138,59 @@ final class OpenClawBotClient {
         }
     }
 
+    /// Check if the response is an error message rather than a real agent reply.
+    private nonisolated static func isErrorResponse(_ text: String) -> Bool {
+        let lower = text.lowercased()
+        return lower.hasPrefix("http 4") || lower.hasPrefix("http 5")
+            || lower.contains("authentication_error") || lower.contains("invalid x-api-key")
+            || lower.contains("invalid_api_key") || lower.contains("rate_limit_error")
+    }
+
     /// Parse the JSON output from `openclaw agent --json`.
+    /// The CLI outputs diagnostic lines on stderr/stdout followed by a multi-line JSON object.
     /// This is nonisolated so it can be called from any thread.
     private nonisolated static func parseResponse(_ jsonString: String) -> String? {
-        // The JSON output may have multiple lines — find the last valid JSON object.
-        let lines = jsonString.components(separatedBy: "\n")
-        for line in lines.reversed() {
-            let trimmed = line.trimmingCharacters(in: .whitespaces)
-            guard trimmed.hasPrefix("{") else { continue }
+        // The CLI output may have diagnostic lines before the JSON.
+        // Find the first '{' and parse everything from there as a single JSON object.
+        guard let jsonStart = jsonString.firstIndex(of: "{") else { return nil }
+        let jsonSubstring = String(jsonString[jsonStart...])
 
-            guard let data = trimmed.data(using: .utf8),
-                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-                continue
-            }
+        guard let data = jsonSubstring.data(using: .utf8),
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            return nil
+        }
 
-            // Try common response fields.
-            if let text = json["text"] as? String, !text.isEmpty {
-                return text
-            }
-            if let reply = json["reply"] as? String, !reply.isEmpty {
-                return reply
-            }
-            if let message = json["message"] as? String, !message.isEmpty {
-                return message
-            }
-            if let output = json["output"] as? String, !output.isEmpty {
-                return output
-            }
-            if let content = json["content"] as? String, !content.isEmpty {
-                return content
-            }
-            // Check nested response structure.
-            if let response = json["response"] as? [String: Any] {
-                if let text = response["text"] as? String { return text }
-                if let content = response["content"] as? String { return content }
-            }
-            if let result = json["result"] as? String, !result.isEmpty {
-                return result
+        // Extract payloads text from any nesting level.
+        if let text = extractPayloadsText(from: json) {
+            return text
+        }
+
+        // Fallback: try common top-level string fields.
+        for key in ["text", "reply", "message", "output", "content"] {
+            if let value = json[key] as? String, !value.isEmpty {
+                return value
             }
         }
 
-        // If no JSON field found, try the raw text minus any diagnostic lines.
-        let cleanLines = lines.filter { line in
-            let l = line.trimmingCharacters(in: .whitespaces)
-            return !l.isEmpty && !l.hasPrefix("[diagnostic]") && !l.hasPrefix("Gateway")
-                && !l.hasPrefix("gateway") && !l.hasPrefix("Error:") && !l.hasPrefix("Source:")
-                && !l.hasPrefix("Config:")
+        return nil
+    }
+
+    /// Walk the JSON to find payloads[0].text at any nesting depth.
+    /// Handles both `{ "payloads": [...] }` and `{ "result": { "payloads": [...] } }`.
+    private nonisolated static func extractPayloadsText(from json: [String: Any]) -> String? {
+        // Direct: { "payloads": [{ "text": "..." }] }
+        if let payloads = json["payloads"] as? [[String: Any]],
+           let first = payloads.first,
+           let text = first["text"] as? String, !text.isEmpty {
+            return text
         }
-        let cleaned = cleanLines.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
-        return cleaned.isEmpty ? nil : cleaned
+        // Nested under "result": { "result": { "payloads": [...] } }
+        if let result = json["result"] as? [String: Any],
+           let payloads = result["payloads"] as? [[String: Any]],
+           let first = payloads.first,
+           let text = first["text"] as? String, !text.isEmpty {
+            return text
+        }
+        return nil
     }
 }

@@ -60,26 +60,9 @@ struct PreferencesView: View {
                     }
 
                     if settings.voiceEnabled {
-                        FieldRow("Wake Word") {
-                            TextField("hey alfred", text: $settings.wakeWord)
-                                .textFieldStyle(.roundedBorder)
-                        }
-
                         FieldRow("OpenAI API Key") {
                             TextField("Paste API key here (⌘V)", text: $settings.openAIAPIKey)
                                 .textFieldStyle(.roundedBorder)
-                        }
-
-                        HStack {
-                            Text("GPT Model")
-                                .foregroundStyle(.secondary)
-                            Spacer()
-                            Picker("", selection: $settings.openAIModel) {
-                                Text("GPT-4o Mini").tag("gpt-4o-mini")
-                                Text("GPT-4o").tag("gpt-4o")
-                            }
-                            .pickerStyle(.menu)
-                            .fixedSize()
                         }
                     }
                 }
